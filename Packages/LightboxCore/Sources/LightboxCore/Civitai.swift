@@ -30,6 +30,8 @@ public struct CivitaiModel: Equatable, Sendable {
         if b.contains("flux.2") || b.contains("flux 2") || b.contains("klein") { return .flux2 }
         if b.contains("flux.1") || b == "flux" { return .flux }
         if b.contains("zimage") || b.contains("z-image") || b.contains("z image") { return .zImage }
+        // Not "Animagine".
+        if b == "anima" || b.hasPrefix("anima ") { return .anima }
         if b.contains("flux") || b.contains("sd 3") || b.contains("hunyuan") || b.contains("wan") {
             return .unsupported
         }

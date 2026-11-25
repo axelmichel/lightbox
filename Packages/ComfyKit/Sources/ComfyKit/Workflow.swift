@@ -237,7 +237,7 @@ public struct SplitModelRequest: Equatable, Sendable {
     public var model: String
     /// One (`CLIPLoader`) or two (`DualCLIPLoader`) files in `text_encoders`.
     public var textEncoders: [String]
-    /// The loader's `type`: "flux", "lumina2" (Z-Image), …
+    /// The loader's `type`: "flux", "lumina2" (Z-Image), "stable_diffusion" (Anima), …
     public var clipType: String
     public var vae: String
     /// `FluxGuidance` on the prompt; `nil` = none.
@@ -247,6 +247,10 @@ public struct SplitModelRequest: Equatable, Sendable {
     /// The negative is the prompt zeroed out (Flux has no negative prompt).
     public var zeroNegative: Bool
     public var sampling: Sampling
+    /// The node the standard sampling starts from: 16-channel SD3-style
+    /// latents for Flux and Z-Image; Anima's workflows use `EmptyLatentImage`
+    /// (ComfyUI fits an empty latent to the model either way).
+    public var emptyLatent: String
 
     public enum Sampling: Equatable, Sendable {
         /// `KSampler` from an empty SD3-style latent (Flux.1, Z-Image).
@@ -258,7 +262,8 @@ public struct SplitModelRequest: Equatable, Sendable {
 
     public init(
         model: String, textEncoders: [String], clipType: String, vae: String, guidance: Double? = nil,
-        shift: Double? = nil, zeroNegative: Bool = false, sampling: Sampling = .standard
+        shift: Double? = nil, zeroNegative: Bool = false, sampling: Sampling = .standard,
+        emptyLatent: String = "EmptySD3LatentImage"
     ) {
         self.model = model
         self.textEncoders = textEncoders
@@ -268,6 +273,7 @@ public struct SplitModelRequest: Equatable, Sendable {
         self.shift = shift
         self.zeroNegative = zeroNegative
         self.sampling = sampling
+        self.emptyLatent = emptyLatent
     }
 
     static func isGGUF(_ file: String) -> Bool { file.lowercased().hasSuffix(".gguf") }
@@ -280,7 +286,7 @@ public struct SplitModelRequest: Equatable, Sendable {
                     "EmptyFlux2LatentImage", "Flux2Scheduler", "RandomNoise", "CFGGuider", "KSamplerSelect",
                     "SamplerCustomAdvanced",
                 ]
-                : ["EmptySD3LatentImage"])
+                : [emptyLatent])
     }
 
     /// The loader nodes this needs.
@@ -518,7 +524,7 @@ public enum WorkflowBuilder {
             // Flux and Z-Image have 16-channel latents, Flux 2 its own.
             let id = g.add(
                 NodeRole(.latent),
-                flux2 ? "EmptyFlux2LatentImage" : r.split == nil ? "EmptyLatentImage" : "EmptySD3LatentImage",
+                flux2 ? "EmptyFlux2LatentImage" : r.split?.emptyLatent ?? "EmptyLatentImage",
                 ["width": .int(r.width), "height": .int(r.height), "batch_size": .int(max(1, r.batchSize))])
             latent = Output(node: id, slot: 0)
         }

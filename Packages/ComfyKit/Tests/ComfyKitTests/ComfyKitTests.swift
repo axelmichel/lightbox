@@ -261,6 +261,23 @@ private func expectKnownInputs(_ g: WorkflowGraph, _ c: ComfyCatalog) throws {
     try expectKnownInputs(g, c)
 }
 
+@Test func animaStartsFromAPlainEmptyLatent() throws {
+    let split = SplitModelRequest(
+        model: "anima-made-up.safetensors", textEncoders: ["qwen3-0.6b-made-up.safetensors"],
+        clipType: "stable_diffusion", vae: "qwen-image-vae-made-up.safetensors", emptyLatent: "EmptyLatentImage")
+    #expect(split.loaderNodes == ["UNETLoader", "CLIPLoader", "VAELoader"])
+    #expect(split.requiredNodes.contains("EmptyLatentImage"))
+    #expect(!split.requiredNodes.contains("EmptySD3LatentImage"))
+    var r = request()
+    r.split = split
+    let g = WorkflowBuilder.txt2img(r, catalog: try kritaCatalog())
+    #expect(g.ids(of: "EmptyLatentImage").count == 1)
+    #expect(g.ids(of: "EmptySD3LatentImage").isEmpty)
+    let clip = try #require(g.ids(of: "CLIPLoader").first.flatMap { g.nodes[$0] })
+    #expect(clip.inputs["type"] == .string("stable_diffusion"))
+    #expect(g.ids(of: "ModelSamplingAuraFlow").isEmpty && g.ids(of: "FluxGuidance").isEmpty)
+}
+
 @Test func safetensorsSplitModelsUseTheCoreLoaders() {
     let split = SplitModelRequest(
         model: "flux1-dev-fp8.safetensors", textEncoders: ["t5xxl_fp8.safetensors", "clip_l.safetensors"],

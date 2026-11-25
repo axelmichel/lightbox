@@ -367,11 +367,12 @@ public enum WorkflowImport {
 
         // Preset: what the checkpoint's name suggests, then the workflow's values.
         var detection = PresetDetector.detect(checkpoint: checkpoint, loras: loras.map(\.name))
-        if splitModel, !detection.family.isSplit, let family = Self.family(clipType: clipType) {
+        if splitModel, !detection.family.isSplit, let family = Self.family(clipType: clipType, encoders: encoders) {
             // A name the detector doesn't know; the text encoder's type tells.
             detection.family = family
             detection.notes.insert("\(family.label): its text encoder is loaded as “\(clipType!)”.", at: 0)
             if family == .zImage { detection.style = .photo }
+            if family == .anima { detection.style = .anime }
         }
         let stem = (name as NSString).deletingPathExtension.trimmingCharacters(in: .whitespaces)
         var preset = detection.preset(checkpoint: checkpoint, name: stem.isEmpty ? nil : stem)
@@ -487,12 +488,14 @@ public enum WorkflowImport {
         return v
     }
 
-    /// The family a split model's text encoder type stands for.
-    static func family(clipType: String?) -> ModelFamily? {
+    /// The family a split model's text encoder type stands for. Anima
+    /// loads its Qwen3 encoder as "stable_diffusion".
+    static func family(clipType: String?, encoders: [String] = []) -> ModelFamily? {
         switch clipType {
         case "flux": .flux
         case "flux2": .flux2
         case "lumina2": .zImage
+        case "stable_diffusion" where encoders.contains { $0.lowercased().contains("qwen") }: .anima
         case nil: nil
         default: .unsupported
         }

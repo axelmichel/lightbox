@@ -28,7 +28,8 @@ public struct Detection: Equatable, Sendable {
     public var dialect: PromptDialect {
         switch (family, style) {
         // Flux and Z-Image read sentences with their T5 / Qwen encoders.
-        case (.flux, _), (.zImage, _), (.flux2, _): .natural
+        // Anima reads tags and sentences alike with its Qwen3 encoder.
+        case (.flux, _), (.zImage, _), (.flux2, _), (.anima, _): .natural
         case (.illustrious, _), (.pony, _), (_, .anime): .tags
         default: .natural
         }
@@ -81,7 +82,7 @@ public struct Detection: Equatable, Sendable {
             p.negativePrompt =
                 "cartoon, anime, illustration, painting, drawing, cgi, render, lowres, blurry, deformed, "
                 + "bad anatomy, bad hands, text, watermark"
-        case (.sdxl, .illustration), (.unsupported, _), (.flux, _), (.zImage, _), (.flux2, _):
+        case (.sdxl, .illustration), (.unsupported, _), (.flux, _), (.zImage, _), (.flux2, _), (.anima, _):
             (p.sampler, p.scheduler, p.steps, p.cfg, p.clipSkip) = ("dpmpp_2m", "karras", 30, 6, 1)
             p.stylePrompt = "detailed digital illustration, vibrant colors"
             p.negativePrompt = "lowres, worst quality, blurry, bad anatomy, bad hands, text, watermark, signature"
@@ -137,6 +138,12 @@ extension Detection {
             let base = notes.contains { $0.localizedCaseInsensitiveContains("base model") }
             (p.steps, p.cfg) = base ? (28, 4) : (namedSteps ?? 4, 1)
             p.negativePrompt = ""
+        case .anima:
+            // As Anima's workflows have it: plain KSampler, CFG 4, quality
+            // and score tags on both sides.
+            (p.steps, p.cfg) = (namedSteps ?? 30, 4)
+            p.stylePrompt = "masterpiece, best quality"
+            p.negativePrompt = "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts"
         default:
             // Z-Image Turbo: 8–9 steps without CFG; the base model wants CFG.
             (p.steps, p.cfg) = fast ? (namedSteps ?? 9, 1) : (28, 4)
@@ -153,8 +160,11 @@ public enum PresetDetector {
     /// `diffusionModel`: the file is a bare diffusion model (ComfyUI's
     /// `diffusion_models` folder), not a checkpoint; one Lightbox doesn't
     /// know is unsupported rather than SDXL.
+    /// `chosen`: the family picked in the preset; a split family is kept
+    /// for a diffusion model whose name and header don't say (fine-tunes).
     public static func detect(
-        checkpoint: String, metadata: [String: String]? = nil, loras: [String] = [], diffusionModel: Bool = false
+        checkpoint: String, metadata: [String: String]? = nil, loras: [String] = [], diffusionModel: Bool = false,
+        chosen: ModelFamily? = nil
     ) -> Detection {
         let file = Name(fileName(checkpoint))
         let meta = metadata ?? [:]
@@ -177,6 +187,9 @@ public enum PresetDetector {
                 family = f
                 notes.append("\(f.label): \(why).")
             }
+        }
+        if let hit = file.first(Fragments.anima) {
+            found(.anima, "“\(hit)” in the file name; loaded with its text encoder and VAE as separate files")
         }
         if let hit = file.first(Fragments.zImage) {
             found(.zImage, "“\(hit)” in the file name; loaded with its text encoder and VAE as separate files")
@@ -210,9 +223,16 @@ public enum PresetDetector {
         if let hit = file.first(Fragments.pony) ?? about.first(Fragments.pony) { found(.pony, "“\(hit)” in the name") }
         if let hit = file.xl ?? file.first(Fragments.sdxl) { found(.sdxl, "“\(hit)” in the file name") }
         if let hit = file.first(Fragments.sd15) { found(.sd15, "“\(hit)” in the file name") }
+        if diffusionModel, family?.isSplit != true, let chosen, chosen.isSplit {
+            family = chosen
+            notes = ["\(chosen.label): picked in the preset; the file's name and header don't say."]
+        }
         if diffusionModel, family?.isSplit != true {
             family = .unsupported
-            notes = ["Not supported: a diffusion model without text encoder that isn't Flux or Z-Image."]
+            notes = [
+                "Not supported: a diffusion model whose name doesn't say what it is. If it is a fine-tune of "
+                    + "Flux, Flux 2, Z-Image or Anima, pick that family under Model."
+            ]
         }
         if family == nil {
             family = .sdxl
@@ -237,6 +257,9 @@ public enum PresetDetector {
         } else if family == .zImage {
             style = .photo
             notes.append("Photo: Z-Image is made for photographic pictures first.")
+        } else if family == .anima {
+            style = .anime
+            notes.append("Anime / Comic: Anima is an anime model.")
         } else if family == .illustrious || family == .pony {
             style = .anime
             notes.append("Anime / Comic: \(family!.label) models are mostly anime models.")
@@ -393,6 +416,8 @@ enum Fragments {
     static let flux = ["flux"]
     static let flux2 = ["flux2", "klein"]
     static let zImage = ["zimage"]
+    /// A whole word: "animagine" is SDXL.
+    static let anima = ["=anima"]
     static let illustrious = ["illustrious", "noobai", "noob", "ilxl", "ill"]
     static let pony = ["pony", "pdxl", "autismmix"]
     static let sdxl = [

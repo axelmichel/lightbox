@@ -97,7 +97,7 @@ extension ModelFamily {
         case .illustrious: .illustrious
         // Pony is SDXL underneath; SDXL ControlNets and IP-Adapters work.
         // Flux and Z-Image have no guides in Lightbox (`supportsGuides`).
-        case .sdxl, .pony, .flux, .zImage, .flux2, .unsupported: .sdxl
+        case .sdxl, .pony, .flux, .zImage, .flux2, .anima, .unsupported: .sdxl
         }
     }
 }

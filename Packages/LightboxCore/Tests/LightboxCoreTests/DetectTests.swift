@@ -48,6 +48,8 @@ private func detect(_ name: String, metadata: [String: String]? = nil, loras: [S
     ("sd3.5_large.safetensors", .unsupported, .illustration),
     ("flux-2-klein-9b-Q4.gguf", .flux2, .illustration),
     ("flux2-dev.safetensors", .flux2, .illustration),
+    ("anima-2b-made-up.safetensors", .anima, .anime),
+    ("animagine-made-up-xl.safetensors", .sdxl, .anime),
 ])
 func detectsFamilyAndStyle(_ name: String, _ family: ModelFamily, _ style: PictureStyle) {
     let d = detect(name)
@@ -171,6 +173,30 @@ func detectsFamilyAndStyle(_ name: String, _ family: ModelFamily, _ style: Pictu
     #expect(p.width * p.height > 1_000_000)
 }
 
+@Test func animaSamplesLikeItsWorkflows() {
+    let p = detect("anima-2b-made-up.safetensors").preset(checkpoint: "anima-2b-made-up.safetensors")
+    #expect((p.sampler, p.scheduler, p.steps, p.cfg) == ("euler", "simple", 30, 4))
+    #expect(p.negativePrompt.contains("score_1"))
+    #expect(p.family.isSplit && p.family.textEncoderCount == 1)
+}
+
+@Test func unknownDiffusionModelsSayHowToPickTheFamily() {
+    let d = PresetDetector.detect(checkpoint: "WesternSample_v1.safetensors", diffusionModel: true)
+    #expect(d.family == .unsupported)
+    #expect(d.notes.contains { $0.contains("Anima") })
+    // Picked by hand in the preset, it stays, with Anima's settings.
+    let picked = PresetDetector.detect(
+        checkpoint: "WesternSample_v1.safetensors", diffusionModel: true, chosen: .anima)
+    #expect((picked.family, picked.style) == (.anima, .anime))
+    #expect(picked.preset(checkpoint: "WesternSample_v1.safetensors").cfg == 4)
+    // A name that says what it is wins over the pick.
+    #expect(
+        PresetDetector.detect(checkpoint: "z_image_turbo-Q4.gguf", diffusionModel: true, chosen: .anima).family
+            == .zImage)
+    // Checkpoints aren't affected.
+    #expect(PresetDetector.detect(checkpoint: "WesternSample_v1.safetensors", chosen: .anima).family == .sdxl)
+}
+
 @Test func fluxSchnellIsFast() {
     let p = detect("flux1-schnell-fp8.safetensors").preset(checkpoint: "flux1-schnell-fp8.safetensors")
     #expect(p.steps == 4)
@@ -193,6 +219,15 @@ func detectsFamilyAndStyle(_ name: String, _ family: ModelFamily, _ style: Pictu
     #expect(missing.vae == nil)
     #expect(missing.notes.contains { $0.contains("t5xxl") })
     #expect(SplitParts.choose(for: .sdxl, textEncoders: encoders, vaes: vaes).textEncoders.isEmpty)
+
+    // Anima takes the 0.6B Qwen3 only, and the Qwen-Image VAE.
+    let anima = SplitParts.choose(
+        for: .anima, textEncoders: encoders + ["qwen3-0.6b-made-up.safetensors"],
+        vaes: vaes + ["qwen-image-vae-made-up.safetensors"])
+    #expect(anima.textEncoders == ["qwen3-0.6b-made-up.safetensors"])
+    #expect(anima.vae == "qwen-image-vae-made-up.safetensors")
+    let none = SplitParts.choose(for: .anima, textEncoders: encoders, vaes: vaes)
+    #expect(none.textEncoders.isEmpty && none.vae == nil)
 }
 
 @Test func splitFamiliesHaveNoGuidesAndOwnLoRAs() {

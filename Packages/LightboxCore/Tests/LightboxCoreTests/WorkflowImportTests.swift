@@ -110,6 +110,23 @@ func readsTxt2ImgWorkflow(_ file: String) throws {
     #expect(p.textEncoders == ["qwen_3_4b.safetensors"])
 }
 
+@Test func importsAnAnimaWorkflowByItsTextEncoder() throws {
+    // The diffusion model's name doesn't say Anima; the Qwen3 encoder
+    // loaded as "stable_diffusion" does.
+    let r = try WorkflowImport.read(try fixture("workflow_anima_ui"), name: "western.json")
+    let p = r.preset
+    #expect(p.family == .anima, "\(p.detectionNotes)")
+    #expect(p.style == .anime)
+    #expect(p.checkpoint == "WesternSample_v1.safetensors")
+    #expect(p.textEncoders == ["qwen3-0.6b-made-up.safetensors"])
+    #expect(p.vae == "qwen-image-vae-made-up.safetensors")
+    #expect((p.steps, p.cfg, p.sampler, p.scheduler) == (30, 4, "euler", "simple"))
+    #expect((p.width, p.height) == (1024, 1024))
+    #expect(r.seed == 7)
+    #expect(r.prompt.hasPrefix("comic illustration, a lighthouse keeper"))
+    #expect(!p.detectionNotes.contains { $0.hasPrefix("Not taken over") }, "\(p.detectionNotes)")
+}
+
 @Test func importsTheFlux2KleinWorkflow() throws {
     let r = try WorkflowImport.read(try fixture("workflow_flux2_ui"), name: "flux2_klein.json")
     let p = r.preset

@@ -52,6 +52,16 @@ private let prompt = ComposedPrompt(
                 model: "z_image_turbo-Q4.gguf", textEncoders: ["qwen-made-up.gguf"], clipType: "lumina2",
                 vae: "ae.safetensors", shift: 3))
 
+    let anima = GenerationPreset(
+        name: "Anima", family: .anima, checkpoint: "anima-made-up.safetensors",
+        vae: "qwen-image-vae-made-up.safetensors", textEncoders: ["qwen3-0.6b-made-up.safetensors"])
+    #expect(
+        anima.request(prompt, seed: 1).split
+            == SplitModelRequest(
+                model: "anima-made-up.safetensors", textEncoders: ["qwen3-0.6b-made-up.safetensors"],
+                clipType: "stable_diffusion", vae: "qwen-image-vae-made-up.safetensors",
+                emptyLatent: "EmptyLatentImage"))
+
     let flux2 = GenerationPreset(
         name: "Klein", family: .flux2, checkpoint: "flux-2-klein-9b-Q4.gguf", vae: "flux2-vae.safetensors",
         textEncoders: ["qwen-8b-made-up.safetensors"])

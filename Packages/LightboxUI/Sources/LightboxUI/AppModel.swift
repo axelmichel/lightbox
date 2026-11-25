@@ -146,7 +146,7 @@ public final class AppModel {
 
     /// Look at a checkpoint: its header metadata (if the server can read
     /// it), its name, and the LoRAs it will be used with.
-    public func detect(checkpoint: String, loras: [String] = []) async -> Detection {
+    public func detect(checkpoint: String, loras: [String] = [], chosen: ModelFamily? = nil) async -> Detection {
         detecting.insert(checkpoint)
         defer { detecting.remove(checkpoint) }
         let diffusion = !catalog.checkpoints.contains(checkpoint) && catalog.diffusionModels.contains(checkpoint)
@@ -157,7 +157,7 @@ public final class AppModel {
             : try? await client?.modelMetadata(
                 folder: diffusion ? "diffusion_models" : "checkpoints", filename: checkpoint)
         return PresetDetector.detect(
-            checkpoint: checkpoint, metadata: metadata, loras: loras, diffusionModel: diffusion)
+            checkpoint: checkpoint, metadata: metadata, loras: loras, diffusionModel: diffusion, chosen: chosen)
     }
 
     /// Flux and Z-Image: pick the text encoders and VAE from the server's
@@ -223,7 +223,8 @@ public final class AppModel {
             return
         }
         let loras = (preset.loras + library.extraLoras).filter(\.isActive).map(\.name)
-        let detection = await detect(checkpoint: preset.checkpoint, loras: loras)
+        // A family picked by hand stays for a fine-tune whose name doesn't say.
+        let detection = await detect(checkpoint: preset.checkpoint, loras: loras, chosen: preset.family)
         guard let i = library.presets.firstIndex(where: { $0.id == presetID }) else { return }
         detection.apply(to: &library.presets[i])
         fillSplitParts(&library.presets[i])

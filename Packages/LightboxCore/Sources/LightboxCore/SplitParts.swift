@@ -58,6 +58,18 @@ public enum SplitParts {
                 "VAE", ["flux2vae", "flux2"], from: vaes.filter { $0 != "pixel_space" },
                 example: "flux2-vae.safetensors")
             return Choice(textEncoders: encoders, vae: vae, notes: notes)
+        case .anima:
+            // Only the 0.6B Qwen3: the 4B one is Z-Image's.
+            if let qwen = pick(
+                "Qwen3 0.6B text encoder", ["qwen306b", "qwen3061", "qwen306"], from: textEncoders,
+                example: "qwen_3_06b_base.safetensors")
+            {
+                encoders.append(qwen)
+            }
+            let vae = pick(
+                "VAE", ["qwenimagevae", "qwenimage"], from: vaes.filter { $0 != "pixel_space" },
+                example: "qwen_image_vae.safetensors")
+            return Choice(textEncoders: encoders, vae: vae, notes: notes)
         default:
             return Choice(textEncoders: [], vae: nil, notes: [])
         }
