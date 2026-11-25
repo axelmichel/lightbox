@@ -239,9 +239,18 @@ extension GenerateView {
         HStack(spacing: 10) {
             Text("Generate").font(.headline)
             Spacer()
-            Toggle("Nodes", systemImage: "point.3.connected.trianglepath.dotted", isOn: $showNodes)
-                .toggleStyle(.button)
-                .help(showNodes ? "Show the gallery" : "Show the node graph in place of the gallery")
+            // The graph takes the middle; an open composition is saved and closed for it.
+            Toggle(
+                "Nodes", systemImage: "point.3.connected.trianglepath.dotted",
+                isOn: Binding(
+                    get: { showNodes && app.compositions.document == nil },
+                    set: { on in
+                        if on { app.compositions.close() }
+                        showNodes = on
+                    })
+            )
+            .toggleStyle(.button)
+            .help(showNodes ? "Show the gallery" : "Show the node graph in place of the gallery")
             if let close {
                 PanelButton(title: "Hide the Generate panel", systemImage: "sidebar.trailing", action: close)
             }

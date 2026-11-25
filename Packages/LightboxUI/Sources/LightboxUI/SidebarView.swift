@@ -173,6 +173,7 @@ struct SidebarView: View {
                     showNodes = false
                     app.gallery.filter = filter
                 case .composition(let id):
+                    showNodes = false
                     app.compositions.open(id)
                 case nil:
                     break
