@@ -32,6 +32,36 @@ private let png = Data(
     #expect(!FileManager.default.fileExists(atPath: store.fileURL(newer.id).path(percentEncoded: false)))
 }
 
+@Test func workflowsBelongToAPreset() throws {
+    let root = tempRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = WorkflowStore(root: root)
+    let file = Data(#"{"nodes":[],"links":[],"version":0.4}"#.utf8)
+    let (photo, comic) = (UUID(), UUID())
+    let a = try store.save(WorkflowEntry(name: "A", presetID: photo), data: file)
+    let b = try store.save(WorkflowEntry(name: "B", presetID: photo), data: file)
+    let c = try store.save(WorkflowEntry(name: "C", presetID: comic), data: file)
+    #expect(Set(try store.list().filter { $0.presetID == photo }.map(\.id)) == [a.id, b.id])
+
+    // Kept without a preset…
+    try store.presetDeleted(photo, keepWorkflows: true)
+    #expect(Set(try store.list().filter { $0.presetID == nil }.map(\.id)) == [a.id, b.id])
+    #expect(try store.load(a.id) == file)
+    // …or deleted with it.
+    try store.presetDeleted(comic, keepWorkflows: false)
+    #expect(!(try store.list().contains { $0.id == c.id }))
+    #expect(!FileManager.default.fileExists(atPath: store.fileURL(c.id).path(percentEncoded: false)))
+}
+
+@Test func workflowEntriesWithoutAPresetStillLoad() throws {
+    let json =
+        #"{"version":1,"workflows":[{"id":"6F9619FF-8B86-D011-B42D-00C04FC964FF","name":"Old","#
+        + #""created":"2026-01-01T00:00:00Z","modified":"2026-01-01T00:00:00Z"}]}"#
+    let index = try JSONDecoder.gallery.decode(WorkflowIndex.self, from: Data(json.utf8))
+    #expect(index.workflows.first?.name == "Old")
+    #expect(index.workflows.first?.presetID == nil)
+}
+
 @Test func picturesKeepTheWorkflowTheyWereMadeWith() throws {
     let root = tempRoot()
     defer { try? FileManager.default.removeItem(at: root) }

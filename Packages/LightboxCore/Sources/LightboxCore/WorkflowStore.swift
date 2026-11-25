@@ -15,12 +15,18 @@ public struct WorkflowEntry: Codable, Hashable, Identifiable, Sendable {
     public var name: String
     public var created: Date
     public var modified: Date
+    /// The preset the workflow belongs to; `nil` for workflows without one
+    /// (kept when their preset was deleted, or saved before presets had them).
+    public var presetID: UUID?
 
-    public init(id: UUID = UUID(), name: String, created: Date = Date(), modified: Date = Date()) {
+    public init(
+        id: UUID = UUID(), name: String, created: Date = Date(), modified: Date = Date(), presetID: UUID? = nil
+    ) {
         self.id = id
         self.name = name
         self.created = created
         self.modified = modified
+        self.presetID = presetID
     }
 }
 
@@ -78,6 +84,22 @@ public struct WorkflowStore: Sendable {
     public func delete(_ id: UUID) throws {
         try? FileManager.default.removeItem(at: fileURL(id))
         try update { $0.workflows.removeAll { $0.id == id } }
+    }
+
+    /// The preset is deleted: delete its workflows too, or keep them
+    /// without a preset.
+    public func presetDeleted(_ presetID: UUID, keepWorkflows: Bool) throws {
+        let ids = try index().workflows.filter { $0.presetID == presetID }.map(\.id)
+        guard !ids.isEmpty else { return }
+        if keepWorkflows {
+            try update { index in
+                for i in index.workflows.indices where index.workflows[i].presetID == presetID {
+                    index.workflows[i].presetID = nil
+                }
+            }
+        } else {
+            for id in ids { try delete(id) }
+        }
     }
 
     /// "Workflow", "Workflow 2", … not used yet.
