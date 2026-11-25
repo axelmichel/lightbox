@@ -69,7 +69,7 @@ struct NodeGraphView: View {
         ) { entry in
             Button("Delete Workflow", role: .destructive) {
                 app.workflows.delete(entry.id)
-                if app.generation.workflowID == entry.id { app.generation.workflowID = nil }
+                app.generation.forgetWorkflow(entry.id)
             }
         } message: { _ in
             Text("The graph goes back to the preset's standard one.")
@@ -118,7 +118,7 @@ struct NodeGraphView: View {
                 selection: Binding(
                     get: { shown?.id },
                     set: {
-                        gen.workflowID = $0
+                        gen.showWorkflow($0, app)
                         canvasID = UUID()
                     })
             ) {
@@ -161,7 +161,7 @@ struct NodeGraphView: View {
     /// graph becomes a workflow of the preset first.
     private func keepLayout(_ moved: WorkflowDocument, of state: GenerationModel.GraphState) {
         guard let id = state.workflow?.id ?? saveStandard(state) else { return }
-        app.generation.workflowID = id
+        app.generation.showWorkflow(id, app)
         app.workflows.change(id, to: moved, "Move Nodes", undo: undo)
     }
 
@@ -204,7 +204,7 @@ struct NodeGraphView: View {
             guard let state, let preset = app.generation.preset(in: app.library),
                 let entry = app.workflows.save(state.doc, name: name, presetID: preset.id)
             else { return }
-            app.generation.workflowID = entry.id
+            app.generation.showWorkflow(entry.id, app)
         case .rename(let entry):
             app.workflows.rename(entry.id, to: name)
         }

@@ -17,9 +17,39 @@ public struct PresetOverrides: Codable, Hashable, Sendable {
     public var guidance: Double?
     public var shift: Double?
 
+    /// One of the values, to list or reset it.
+    public enum Field: CaseIterable, Sendable {
+        case checkpoint, vae, textEncoders, sampler, scheduler, steps, cfg, clipSkip, guidance, shift
+    }
+
     public init() {}
 
     public var isEmpty: Bool { self == PresetOverrides() }
+
+    /// The values set, in `Field` order.
+    public var fields: [Field] {
+        Field.allCases.filter { field in
+            var o = self
+            o.reset(field)
+            return o != self
+        }
+    }
+
+    /// Back to the preset's value.
+    public mutating func reset(_ field: Field) {
+        switch field {
+        case .checkpoint: checkpoint = nil
+        case .vae: vae = nil
+        case .textEncoders: textEncoders = nil
+        case .sampler: sampler = nil
+        case .scheduler: scheduler = nil
+        case .steps: steps = nil
+        case .cfg: cfg = nil
+        case .clipSkip: clipSkip = nil
+        case .guidance: guidance = nil
+        case .shift: shift = nil
+        }
+    }
 
     public func applied(to preset: GenerationPreset) -> GenerationPreset {
         var p = preset

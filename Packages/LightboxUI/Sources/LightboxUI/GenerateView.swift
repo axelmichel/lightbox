@@ -56,11 +56,26 @@ struct GenerateView: View {
             // What the workflow shown in the node graph changes; the preset stays as it is.
             if let preset, let workflow = gen.shownWorkflow(app, preset: preset), !workflow.overrides.isEmpty {
                 Section {
-                    ForEach(workflow.overrides.lines(for: preset), id: \.self) { Text($0) }
+                    ForEach(workflow.overrides.entries(for: preset), id: \.text) { entry in
+                        HStack {
+                            Text(entry.text)
+                            Spacer()
+                            Button("Reset", systemImage: "arrow.uturn.backward") { gen.resetOverride(entry.field, app) }
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.borderless)
+                                .help("Back to the preset's value")
+                        }
+                    }
+                    HStack {
+                        Button("Reset All") { gen.resetOverride(nil, app) }
+                        Spacer()
+                        Button("Save to Preset") { gen.saveOverridesToPreset(app) }
+                            .help("Make these the preset's own values, for every workflow of “\(preset.name)”")
+                    }
                 } header: {
                     Text("Changed in “\(workflow.name)”")
                 } footer: {
-                    Text("Set in the node graph. The preset itself is unchanged.")
+                    Text("Set in the node graph. The preset itself stays as it is until you save these to it.")
                 }
             }
 

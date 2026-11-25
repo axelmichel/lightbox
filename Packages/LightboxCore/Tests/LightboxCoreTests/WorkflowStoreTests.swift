@@ -80,9 +80,10 @@ private let png = Data(
     o.steps = 30
     var trimmed = o.trimmed(for: preset)
     #expect(trimmed.steps == nil && trimmed.sampler == "dpmpp_2m")
-    trimmed.sampler = nil
-    trimmed.checkpoint = nil
-    #expect(trimmed.isEmpty)
+    #expect(trimmed.fields == [.checkpoint, .sampler])
+    trimmed.reset(.sampler)
+    trimmed.reset(.checkpoint)
+    #expect(trimmed.isEmpty && trimmed.fields.isEmpty)
 
     // Kept with the workflow, and only written when there are any.
     let root = tempRoot()

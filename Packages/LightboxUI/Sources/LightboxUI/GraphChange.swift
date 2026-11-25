@@ -127,26 +127,28 @@ struct GraphTarget: Equatable {
 }
 
 extension PresetOverrides {
-    /// One line per value the workflow changes, with the preset's own:
+    /// Each value the workflow changes, said with the preset's own:
     /// "Steps: 12 (preset 30)".
-    func lines(for preset: GenerationPreset) -> [String] {
+    func entries(for preset: GenerationPreset) -> [(field: Field, text: String)] {
         func number(_ d: Double) -> String { NodeRowText.value(.double(d)) }
         func file(_ s: String?) -> String { s.map { ($0 as NSString).lastPathComponent } ?? "—" }
-        var out: [String] = []
-        if let checkpoint { out.append("Model: \(file(checkpoint)) (preset \(file(preset.checkpoint)))") }
-        if let vae { out.append("VAE: \(file(vae)) (preset \(file(preset.vae)))") }
-        if let textEncoders {
-            out.append(
-                "Text encoders: \(textEncoders.map(file).joined(separator: ", ")) "
-                    + "(preset \(preset.textEncoders.map(file).joined(separator: ", ")))")
+        func files(_ list: [String]) -> String { list.map(file).joined(separator: ", ") }
+        return fields.map { field in
+            let text: String =
+                switch field {
+                case .checkpoint: "Model: \(file(checkpoint)) (preset \(file(preset.checkpoint)))"
+                case .vae: "VAE: \(file(vae)) (preset \(file(preset.vae)))"
+                case .textEncoders:
+                    "Text encoders: \(files(textEncoders ?? [])) (preset \(files(preset.textEncoders)))"
+                case .sampler: "Sampler: \(sampler ?? "") (preset \(preset.sampler))"
+                case .scheduler: "Scheduler: \(scheduler ?? "") (preset \(preset.scheduler))"
+                case .steps: "Steps: \(steps ?? 0) (preset \(preset.steps))"
+                case .cfg: "CFG: \(number(cfg ?? 0)) (preset \(number(preset.cfg)))"
+                case .clipSkip: "CLIP skip: \(clipSkip ?? 1) (preset \(preset.clipSkip))"
+                case .guidance: "Guidance: \(number(guidance ?? 0)) (preset \(number(preset.guidance)))"
+                case .shift: "Shift: \(number(shift ?? 0)) (preset \(number(preset.shift)))"
+                }
+            return (field, text)
         }
-        if let sampler { out.append("Sampler: \(sampler) (preset \(preset.sampler))") }
-        if let scheduler { out.append("Scheduler: \(scheduler) (preset \(preset.scheduler))") }
-        if let steps { out.append("Steps: \(steps) (preset \(preset.steps))") }
-        if let cfg { out.append("CFG: \(number(cfg)) (preset \(number(preset.cfg)))") }
-        if let clipSkip { out.append("CLIP skip: \(clipSkip) (preset \(preset.clipSkip))") }
-        if let guidance { out.append("Guidance: \(number(guidance)) (preset \(number(preset.guidance)))") }
-        if let shift { out.append("Shift: \(number(shift)) (preset \(number(preset.shift)))") }
-        return out
     }
 }

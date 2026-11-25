@@ -95,10 +95,13 @@ func changesComeBackFromTheGraph(_ change: GraphChange) throws {
     o.steps = 12
     o.cfg = 3.5
     o.checkpoint = "sdxl/photo-xl-v2.safetensors"
+    let entries = o.entries(for: preset)
+    #expect(entries.map(\.field) == [.checkpoint, .steps, .cfg])
+    let texts = entries.map(\.text)
     #expect(
-        o.lines(for: preset) == [
+        texts == [
             "Model: photo-xl-v2.safetensors (preset photo-xl.safetensors)", "Steps: 12 (preset 30)",
             "CFG: 3.5 (preset 5)",
         ])
-    #expect(PresetOverrides().lines(for: preset).isEmpty)
+    #expect(PresetOverrides().entries(for: preset).isEmpty)
 }

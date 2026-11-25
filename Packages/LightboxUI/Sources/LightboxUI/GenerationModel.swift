@@ -35,9 +35,11 @@ public final class GenerationModel {
     }
 
     public var presetID: UUID?
-    /// The saved workflow the node graph shows; `nil`: the standard graph,
-    /// made from the preset each time.
-    public var workflowID: UUID?
+    /// The saved workflow the node graph shows, per preset; none: the
+    /// standard graph, made from the preset each time. Kept on this device.
+    public private(set) var workflowChoices: [UUID: UUID] = GenerationModel.loadChoices() {
+        didSet { Self.saveChoices(workflowChoices) }
+    }
     public var prompt = ""
     public var negative = ""
     /// The camera, light, film or comic style picked per category. Only
@@ -322,14 +324,65 @@ public final class GenerationModel {
         guard t.overrides != before.overrides else { return }
         let id = shownWorkflow(app, preset: t.preset)?.id ?? saveStandard()
         if let id {
-            workflowID = id
+            showWorkflow(id, app)
             app.workflows.setOverrides(id, t.overrides)
         }
     }
 
+    /// Show workflow `id` (`nil`: the standard graph) for the current preset.
+    func showWorkflow(_ id: UUID?, _ app: AppModel) {
+        guard let preset = preset(in: app.library) else { return }
+        workflowChoices[preset.id] = id
+    }
+
+    /// A deleted workflow is no one's choice any more.
+    func forgetWorkflow(_ id: UUID) {
+        workflowChoices = workflowChoices.filter { $0.value != id }
+    }
+
+    /// Undo one change of the shown workflow (`nil`: all of them).
+    func resetOverride(_ field: PresetOverrides.Field?, _ app: AppModel) {
+        guard let preset = preset(in: app.library), let workflow = shownWorkflow(app, preset: preset) else { return }
+        var o = workflow.overrides
+        if let field { o.reset(field) } else { o = PresetOverrides() }
+        app.workflows.setOverrides(workflow.id, o)
+    }
+
+    /// Make the shown workflow's changes the preset's own. They then go from
+    /// the workflow, and from the preset's other workflows where they now
+    /// equal the preset.
+    func saveOverridesToPreset(_ app: AppModel) {
+        guard let preset = preset(in: app.library), let workflow = shownWorkflow(app, preset: preset),
+            let i = app.library.presets.firstIndex(where: { $0.id == preset.id })
+        else { return }
+        let updated = workflow.overrides.applied(to: preset)
+        app.library.presets[i] = updated
+        for entry in app.workflows.entries(for: preset.id) {
+            app.workflows.setOverrides(entry.id, entry.overrides.trimmed(for: updated))
+        }
+        app.workflows.setOverrides(workflow.id, PresetOverrides())
+    }
+
+    private static let choicesKey = "nodeWorkflowChoices"
+
+    private static func loadChoices() -> [UUID: UUID] {
+        let stored = UserDefaults.standard.dictionary(forKey: choicesKey) as? [String: String] ?? [:]
+        return Dictionary(
+            stored.compactMap { key, value in
+                UUID(uuidString: key).flatMap { k in UUID(uuidString: value).map { (k, $0) } }
+            },
+            uniquingKeysWith: { a, _ in a })
+    }
+
+    private static func saveChoices(_ choices: [UUID: UUID]) {
+        UserDefaults.standard.set(
+            Dictionary(uniqueKeysWithValues: choices.map { ($0.key.uuidString, $0.value.uuidString) }),
+            forKey: choicesKey)
+    }
+
     /// The chosen workflow, if it is the preset's or has no preset.
     func shownWorkflow(_ app: AppModel, preset: GenerationPreset) -> WorkflowEntry? {
-        guard let entry = workflowID.flatMap(app.workflows.entry) else { return nil }
+        guard let entry = workflowChoices[preset.id].flatMap(app.workflows.entry) else { return nil }
         let presets = Set(app.library.presets.map(\.id))
         let fits = entry.presetID == preset.id || entry.presetID.map { !presets.contains($0) } ?? true
         return fits ? entry : nil
