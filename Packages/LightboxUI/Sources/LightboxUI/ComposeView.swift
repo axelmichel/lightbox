@@ -168,12 +168,13 @@ private struct ComposeCanvas: View {
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
-        .onKeyPress(characters: ["v", "w", "b", "e", "m"]) { press in
+        .onKeyPress(characters: ["v", "w", "b", "e", "s", "m"]) { press in
             guard press.modifiers.isEmpty else { return .ignored }
             switch press.characters {
             case "v": doc.tool = .move
             case "w": doc.tool = .magicWand
             case "e": doc.tool = .eraser
+            case "s": doc.tool = .smooth
             case "m": doc.tool = .area
             default: doc.tool = .brush
             }
@@ -437,9 +438,9 @@ private struct ComposeCanvas: View {
                     doc.brush(atX: now.x / s, y: now.y / s, erase: doc.brushErases != Self.modifiers.option)
                     return
                 }
-                if doc.tool == .eraser {
+                if doc.tool == .eraser || doc.tool == .smooth {
                     focused = true
-                    doc.erase(atX: now.x / s, y: now.y / s)
+                    doc.strokeLayer(atX: now.x / s, y: now.y / s)
                     return
                 }
                 if !dragging {
@@ -463,7 +464,7 @@ private struct ComposeCanvas: View {
             }
             .onEnded { v in
                 if doc.tool == .brush { return doc.endStroke() }
-                if doc.tool == .eraser { return doc.endErase(undo: undo) }
+                if doc.tool == .eraser || doc.tool == .smooth { return doc.endLayerStroke(undo: undo) }
                 if doc.tool == .area {
                     // A click without dragging clears the area.
                     if hypot(v.translation.width, v.translation.height) < 3 { doc.area = nil }
@@ -845,6 +846,7 @@ private struct ToolPalette: View {
             tool(.magicWand, "wand.and.rays", "Magic wand: select by color (W)")
             tool(.brush, "paintbrush.pointed", "Brush: paint a selection (B)")
             tool(.eraser, "eraser", "Eraser: rub out pixels of a layer (E)")
+            tool(.smooth, "scribble.variable", "Smooth edges: even out a cut-out's outline where you paint (S)")
             tool(.area, "rectangle.dashed", "Area: drag a part of the picture to redraw with the model (M)")
             Divider().frame(width: 28)
             button(
@@ -938,9 +940,48 @@ private struct SelectionBar: View {
             areaBar
         } else if doc.tool == .eraser {
             eraserBar
+        } else if doc.tool == .smooth {
+            smoothBar
         } else {
             pixelBar
         }
+    }
+
+    /// The smoothing brush: size, strength, how far it evens out, and
+    /// whether the outline stays sharp.
+    private var smoothBar: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 4) {
+                Text("Size")
+                Slider(value: $doc.smoothSize, in: 4...400).frame(width: 100)
+                Text("\(Int(doc.smoothSize))").monospacedDigit().frame(width: 28, alignment: .trailing)
+            }
+            .help("Diameter in canvas pixels")
+            HStack(spacing: 4) {
+                Text("Strength")
+                Slider(value: $doc.smoothStrength, in: 0.05...1).frame(width: 80)
+                Text("\(Int((doc.smoothStrength * 100).rounded())) %").monospacedDigit()
+                    .frame(width: 40, alignment: .trailing)
+            }
+            HStack(spacing: 4) {
+                Text("Smoothness")
+                Slider(value: $doc.smoothness, in: 1...20).frame(width: 80)
+                Text("\(Int(doc.smoothness))").monospacedDigit().frame(width: 22, alignment: .trailing)
+            }
+            .help("How far along the edge steps and specks are evened out, in canvas pixels")
+            Toggle("Keep Edge Sharp", isOn: $doc.smoothCrisp)
+                .help("On: a smooth but sharp outline. Off: the edge fades out softly")
+            Button("Whole Edge", systemImage: "circle.dashed") { doc.smoothWholeEdge(undo: undo) }
+                .disabled(doc.selectedLayer == nil || doc.busy)
+                .help("Smooth the selected layer's whole outline at once")
+        }
+        #if os(macOS)
+            .toggleStyle(.checkbox)
+        #endif
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
     }
 
     /// The eraser: size, strength and how soft its edge is.

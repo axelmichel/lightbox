@@ -91,7 +91,7 @@ public final class CompositionsModel {
 /// layer, the tools. Saved on its own a moment after each change.
 @MainActor @Observable
 public final class ComposeDocument {
-    public enum Tool: Hashable, Sendable { case move, magicWand, brush, eraser, area }
+    public enum Tool: Hashable, Sendable { case move, magicWand, brush, eraser, smooth, area }
 
     public enum WandMode: Hashable, CaseIterable, Sendable {
         case replace, add, subtract
@@ -115,13 +115,16 @@ public final class ComposeDocument {
             if selection != oldValue, pixels.layer != selection { clearMask() }
             // Picked on the canvas: that layer alone.
             if !selectingFromList { selectedLayers = selection.map { [$0] } ?? [] }
+            if selection != oldValue { prepareSmoothing() }
         }
     }
     /// All layers selected in the list (⌘- or ⇧-click), for merging or
     /// deleting them together; `selection` is one of them.
     public private(set) var selectedLayers: Set<UUID> = []
     @ObservationIgnored private var selectingFromList = false
-    public var tool: Tool = .move
+    public var tool: Tool = .move {
+        didSet { if tool != oldValue { prepareSmoothing() } }
+    }
 
     /// Screen points per canvas pixel; `nil` = fit the window.
     public var zoom: Double?
@@ -148,6 +151,16 @@ public final class ComposeDocument {
     public var eraserStrength = 1.0
     /// The share of the eraser's radius erased at full strength; the rest fades.
     public var eraserHardness = 0.5
+    /// Smoothing brush diameter in canvas pixels.
+    public var smoothSize = 80.0
+    /// How much the smoothing brush evens out, 0…1.
+    public var smoothStrength = 1.0
+    /// How far the edge is evened out, in canvas pixels.
+    public var smoothness = 3.0 {
+        didSet { if Int(smoothness) != Int(oldValue) { prepareSmoothing() } }
+    }
+    /// Keep the smoothed outline sharp instead of letting it fade out.
+    public var smoothCrisp = true
     public private(set) var maskOverlay: CGImage?
     public var hasMask: Bool { pixels.mask.map { !$0.isEmpty } ?? false }
 
@@ -163,18 +176,22 @@ public final class ComposeDocument {
     public private(set) var editing = false
     public private(set) var editStatus = ""
 
-    /// The eraser stroke being dragged: the layer, its picture before, and
-    /// what is erased so far. The canvas shows the stroke live through
-    /// `images`; the end of the stroke writes a new picture (one undo step).
-    private struct EraseStroke {
+    /// The eraser or smoothing stroke being dragged: the layer, its picture
+    /// before, and the stroke so far. The canvas shows the stroke live
+    /// through `images`; the end of the stroke writes a new picture (one
+    /// undo step).
+    private struct PixelStroke {
         var layer: UUID
         var image: UUID
         var original: CGImage
-        var stroke: EraserStroke
+        var stroke: any LayerStroke
+        var name: String
         var generation = 0
     }
-    @ObservationIgnored private var erasing: EraseStroke?
-    @ObservationIgnored private var erasePreviewRunning = false
+    @ObservationIgnored private var stroking: PixelStroke?
+    @ObservationIgnored private var strokePreviewRunning = false
+    /// The last picture blurred for smoothing, kept while the settings stay.
+    @ObservationIgnored private var smoothBlur: (image: UUID, radius: Int, buffer: PixelBuffer)?
 
     private struct PixelSelection {
         var layer: UUID?
@@ -683,12 +700,13 @@ public final class ComposeDocument {
         pixels.lastClick = nil
     }
 
-    // MARK: - Eraser
+    // MARK: - Eraser and smoothing
 
-    /// Rub out the selected layer's pixels (or the one at the point) along
-    /// the drag, in canvas coordinates. Call `endErase` when the drag ends.
-    public func erase(atX x: Double, y: Double) {
-        if erasing == nil {
+    /// Erase or smooth (by `tool`) the selected layer (or the one at the
+    /// point) along the drag, in canvas coordinates. Call `endLayerStroke`
+    /// when the drag ends.
+    public func strokeLayer(atX x: Double, y: Double) {
+        if stroking == nil {
             if selectedLayer.map({ !$0.visible || !$0.frame.contains(x: x, y: y) }) ?? true,
                 let hit = composition.hitTest(x: x, y: y)
             {
@@ -698,42 +716,109 @@ public final class ComposeDocument {
                 let buffer = buffers[layer.image] ?? PixelBuffer(cg)
             else { return }
             buffers[layer.image] = buffer
-            erasing = EraseStroke(layer: layer.id, image: layer.image, original: cg, stroke: EraserStroke(base: buffer))
+            let stroke: any LayerStroke =
+                tool == .smooth ? smoothStroke(layer, base: buffer) : EraserStroke(base: buffer)
+            stroking = PixelStroke(
+                layer: layer.id, image: layer.image, original: cg, stroke: stroke,
+                name: tool == .smooth ? "Smooth Edge" : "Erase")
         }
-        guard var e = erasing, let layer = composition.layer(e.layer), layer.image == e.image else { return }
+        guard var e = stroking, let layer = composition.layer(e.layer), layer.image == e.image else { return }
         let px = (x - layer.frame.x) / layer.frame.width * Double(layer.pixelWidth)
         let py = (y - layer.frame.y) / layer.frame.height * Double(layer.pixelHeight)
-        e.stroke.move(
-            toX: px, y: py, radius: max(0.5, eraserSize / 2 / layer.scale), strength: eraserStrength,
-            hardness: eraserHardness)
+        if tool == .smooth {
+            e.stroke.move(
+                toX: px, y: py, radius: max(0.5, smoothSize / 2 / layer.scale), strength: smoothStrength, hardness: 0.5)
+        } else {
+            e.stroke.move(
+                toX: px, y: py, radius: max(0.5, eraserSize / 2 / layer.scale), strength: eraserStrength,
+                hardness: eraserHardness)
+        }
         e.generation += 1
-        erasing = e
-        showErasePreview()
+        stroking = e
+        showStrokePreview()
+    }
+
+    /// A smoothing stroke over `layer`'s picture; the blur is made once per
+    /// picture and smoothness.
+    private func smoothStroke(_ layer: CompositionLayer, base: PixelBuffer) -> SmoothStroke {
+        let radius = max(1, Int((smoothness / layer.scale).rounded()))
+        if let cached = smoothBlur, cached.image == layer.image, cached.radius == radius {
+            return SmoothStroke(base: base, blurred: cached.buffer, crisp: smoothCrisp)
+        }
+        let blurred = SmoothStroke.blurred(base, radius: radius)
+        smoothBlur = (layer.image, radius, blurred)
+        return SmoothStroke(base: base, blurred: blurred, crisp: smoothCrisp)
+    }
+
+    /// Blur the selected layer for the smoothing brush ahead of the first
+    /// stroke, off the main thread.
+    private func prepareSmoothing() {
+        guard tool == .smooth, let layer = selectedLayer, let cg = images[layer.image] else { return }
+        let radius = max(1, Int((smoothness / layer.scale).rounded()))
+        if let cached = smoothBlur, cached.image == layer.image, cached.radius == radius { return }
+        let image = layer.image
+        let cachedBuffer = buffers[image]
+        Task {
+            let result = await Task.detached(priority: .userInitiated) { () -> (PixelBuffer, PixelBuffer)? in
+                guard let buffer = cachedBuffer ?? PixelBuffer(cg) else { return nil }
+                return (buffer, SmoothStroke.blurred(buffer, radius: radius))
+            }.value
+            guard let result, self.composition.layer(layer.id)?.image == image else { return }
+            self.buffers[image] = self.buffers[image] ?? result.0
+            self.smoothBlur = (image, radius, result.1)
+        }
     }
 
     /// Draw the stroke so far off the main thread, one at a time.
-    private func showErasePreview() {
-        guard !erasePreviewRunning, let e = erasing else { return }
-        erasePreviewRunning = true
+    private func showStrokePreview() {
+        guard !strokePreviewRunning, let e = stroking else { return }
+        strokePreviewRunning = true
         let stroke = e.stroke
         let generation = e.generation
         Task {
             let image = await Task.detached(priority: .userInitiated) { stroke.result().cgImage() }.value
-            self.erasePreviewRunning = false
-            guard let current = self.erasing else { return }
+            self.strokePreviewRunning = false
+            guard let current = self.stroking else { return }
             if let image { self.images[current.image] = image }
-            if current.generation != generation { self.showErasePreview() }
+            if current.generation != generation { self.showStrokePreview() }
         }
     }
 
-    public func endErase(undo: UndoManager?) {
-        guard let e = erasing else { return }
-        erasing = nil
+    public func endLayerStroke(undo: UndoManager?) {
+        guard let e = stroking else { return }
+        stroking = nil
         guard !e.stroke.isEmpty else {
             images[e.image] = e.original
             return
         }
-        let stroke = e.stroke
+        apply(e.stroke, to: e.layer, image: e.image, original: e.original, name: e.name, undo: undo)
+    }
+
+    /// Smooth the selected layer's whole outline at once.
+    public func smoothWholeEdge(undo: UndoManager?) {
+        guard stroking == nil, !busy, let layer = selectedLayer, let cg = images[layer.image],
+            let buffer = buffers[layer.image] ?? PixelBuffer(cg)
+        else { return }
+        buffers[layer.image] = buffer
+        busy = true
+        let radius = max(1, Int((smoothness / layer.scale).rounded()))
+        let crisp = smoothCrisp
+        let strength = smoothStrength
+        Task {
+            let stroke = await Task.detached(priority: .userInitiated) { () -> SmoothStroke in
+                var s = SmoothStroke(base: buffer, smoothness: radius, crisp: crisp)
+                s.coverAll(strength: strength)
+                return s
+            }.value
+            self.busy = false
+            self.apply(stroke, to: layer.id, image: layer.image, original: cg, name: "Smooth Edge", undo: undo)
+        }
+    }
+
+    /// Make the stroke's picture the layer's new one (undo brings the old back).
+    private func apply(
+        _ stroke: any LayerStroke, to id: UUID, image: UUID, original: CGImage, name: String, undo: UndoManager?
+    ) {
         Task {
             let result = await Task.detached(priority: .userInitiated) { () -> (PixelBuffer, Data, CGImage)? in
                 let out = stroke.result()
@@ -741,10 +826,11 @@ public final class ComposeDocument {
                 return (out, png, cg)
             }.value
             // The old picture stays as it was, for undo.
-            self.images[e.image] = e.original
-            guard let result, let layer = self.composition.layer(e.layer), layer.image == e.image else { return }
-            self.replaceImage(of: e.layer, png: result.1, image: result.2, name: "Erase", undo: undo)
-            if let new = self.composition.layer(e.layer)?.image { self.buffers[new] = result.0 }
+            self.images[image] = original
+            guard let result, let layer = self.composition.layer(id), layer.image == image else { return }
+            self.replaceImage(of: id, png: result.1, image: result.2, name: name, undo: undo)
+            if let new = self.composition.layer(id)?.image { self.buffers[new] = result.0 }
+            self.prepareSmoothing()
         }
     }
 

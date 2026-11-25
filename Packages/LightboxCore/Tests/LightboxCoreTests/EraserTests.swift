@@ -46,3 +46,51 @@ private func alpha(_ b: PixelBuffer, _ x: Int, _ y: Int) -> UInt8 { b.pixels[(y 
     }
     #expect(alpha(stroke.result(), 10, 10) == 153)
 }
+
+/// A red square with a jagged step in its right edge, on transparency.
+private func cutOut() -> PixelBuffer {
+    var b = PixelBuffer(width: 40, height: 40, pixels: [UInt8](repeating: 0, count: 40 * 40 * 4))
+    for y in 10..<30 {
+        let right = y % 2 == 0 ? 30 : 28
+        for x in 10..<right {
+            b.pixels.replaceSubrange((y * 40 + x) * 4..<(y * 40 + x) * 4 + 4, with: [255, 0, 0, 255])
+        }
+    }
+    return b
+}
+
+@Test func smoothingEvensOutTheEdgeOnly() {
+    var stroke = SmoothStroke(base: cutOut(), smoothness: 2, crisp: false)
+    stroke.coverAll(strength: 1)
+    let out = stroke.result()
+    // The steps along the right edge become alike.
+    let a = alpha(out, 29, 20)
+    let b = alpha(out, 29, 21)
+    #expect(abs(Int(a) - Int(b)) < 60)
+    // The inside stays opaque and red; far outside stays clear.
+    #expect(alpha(out, 20, 20) == 255)
+    #expect(out.pixels[(20 * 40 + 20) * 4] == 255)
+    #expect(alpha(out, 2, 2) == 0)
+    // A pixel that gains alpha takes its neighbors' color, not black.
+    let i = (21 * 40 + 28) * 4
+    if out.pixels[i + 3] > 20 { #expect(out.pixels[i] >= out.pixels[i + 3] - 2) }
+}
+
+@Test func crispSmoothingKeepsASharpOutline() {
+    var soft = SmoothStroke(base: cutOut(), smoothness: 3, crisp: false)
+    var crisp = SmoothStroke(base: cutOut(), smoothness: 3, crisp: true)
+    soft.coverAll(strength: 1)
+    crisp.coverAll(strength: 1)
+    // Fewer half-transparent pixels along a row across the left edge.
+    func half(_ b: PixelBuffer) -> Int { (0..<40).filter { (20...235).contains(alpha(b, $0, 20)) }.count }
+    #expect(half(crisp.result()) < half(soft.result()))
+}
+
+@Test func smoothingOnlyWherePainted() {
+    var stroke = SmoothStroke(base: cutOut(), smoothness: 2, crisp: false)
+    stroke.move(toX: 29, y: 15, radius: 3, strength: 1, hardness: 1)
+    let out = stroke.result()
+    // Far from the stroke the steps stay.
+    #expect(alpha(out, 28, 27) == 0)
+    #expect(alpha(out, 29, 26) == 255)
+}
