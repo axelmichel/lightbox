@@ -242,12 +242,6 @@ struct GalleryGridView: View {
             }
             .help("Start a new composition with this picture instead of opening the one it came from")
         }
-        if targets.count == 1, item.workflow != nil {
-            Button("Open Workflow", systemImage: "point.3.connected.trianglepath.dotted") {
-                app.workflows.openRun(of: item.id, catalog: app.catalog)
-            }
-            .help("Open the node-editor workflow this picture was made with, as it was run")
-        }
         Button(targets.count == 1 ? "Tags…" : "Tags for \(targets.count) Pictures…", systemImage: "tag") {
             tagging = targets
         }

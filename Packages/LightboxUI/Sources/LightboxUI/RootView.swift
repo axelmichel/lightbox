@@ -43,9 +43,7 @@ struct RootView: View {
                 .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
         } detail: {
             Group {
-                if let editor = app.workflows.editor {
-                    NodeEditorView(editor: editor).id(editor.entry.id)
-                } else if let doc = app.compositions.document {
+                if let doc = app.compositions.document {
                     ComposeView(doc: doc).id(doc.composition.id)
                 } else {
                     ResizableSplit(key: "promptPanelHeight") {
@@ -55,8 +53,7 @@ struct RootView: View {
                     }
                 }
             }
-            // The Generate panel isn't used by the node editor.
-            .inspector(isPresented: app.workflows.editor == nil ? $showGenerate : .constant(false)) {
+            .inspector(isPresented: $showGenerate) {
                 GenerateView { showGenerate = false }
                     .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
             }
@@ -69,13 +66,6 @@ struct RootView: View {
             #endif
         }
         .onChange(of: app.generation.focusRequests) { showGenerate = true }
-        // One editor at a time: opening a composition closes the workflow, and the other way round.
-        .onChange(of: app.compositions.document?.composition.id) { _, id in
-            if id != nil { app.workflows.close() }
-        }
-        .onChange(of: app.workflows.editor?.entry.id) { _, id in
-            if id != nil { app.compositions.close() }
-        }
         .sheet(isPresented: $app.showingPresets) {
             PresetsView()
         }

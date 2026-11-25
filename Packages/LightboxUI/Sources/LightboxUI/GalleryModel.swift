@@ -245,40 +245,6 @@ public final class GalleryModel {
         }
     }
 
-    /// Add pictures a node-editor workflow made; `run` is the workflow and
-    /// prompt as sent (see `WorkflowRun`). Returns the new pictures' ids.
-    @discardableResult
-    func saveWorkflowResults(
-        _ pictures: [(png: Data, node: String)], run: Data, workflow: (id: UUID?, name: String), prompt: Data,
-        sent: ComposedPrompt, rating: ContentRating, server: String?
-    ) -> [UUID] {
-        do {
-            let file = try store.writeWorkflowRun(run)
-            var new: [GalleryItem] = []
-            for picture in pictures {
-                guard let size = GalleryStore.pixelSize(picture.png) else { continue }
-                let recipe = GalleryStore.recipe(
-                    fromPrompt: prompt, name: workflow.name, width: size.width, height: size.height, rating: rating,
-                    sent: sent)
-                let use = WorkflowRun(
-                    workflowID: workflow.id, name: workflow.name, file: file, node: picture.node, server: server)
-                new.append(
-                    try store.write(png: picture.png, recipe: recipe, folderID: filter.folderID, workflow: use))
-            }
-            // Newest first: the last output node's picture on top.
-            change { $0.insert(new.reversed()) }
-            return new.map(\.id)
-        } catch {
-            problem = "Could not save the pictures: \(AppModel.describe(error))"
-            return []
-        }
-    }
-
-    /// The workflow file a picture was made with (`{"workflow", "prompt"}`).
-    public func workflowRun(of id: UUID) -> Data? {
-        item(id)?.workflow.flatMap { store.workflowRun($0.file) }
-    }
-
     /// The guide pictures of a picture's recipe, by file name.
     public func guideImages(of id: UUID) -> [String: Data] {
         item(id).map { store.guideImages(of: $0.recipe) } ?? [:]

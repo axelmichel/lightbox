@@ -41,8 +41,6 @@ public final class AppModel {
     public let gallery: GalleryModel
     /// Compositions made of gallery pictures, and the one being edited.
     public let compositions: CompositionsModel
-    /// The node editor's workflows, and the one open.
-    public let workflows: WorkflowsModel
     public let generation = GenerationModel()
 
     /// The presets editor is open.
@@ -78,7 +76,6 @@ public final class AppModel {
         library = LibraryStore.load()
         gallery = GalleryModel(store: GalleryStore(root: LibraryStore.folder.appending(path: "Gallery")))
         compositions = CompositionsModel(store: CompositionStore(root: gallery.store.root), gallery: gallery)
-        workflows = WorkflowsModel(store: WorkflowStore(root: gallery.store.root), gallery: gallery)
         previews = PreviewStore.loadAll(
             library.modifiers.map(\.id) + library.loraNotes.values.compactMap(\.picture))
         gallery.recoverOrphans(rating: library.rating, presets: library.presets)

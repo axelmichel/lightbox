@@ -5,7 +5,6 @@ import SwiftUI
 private enum SidebarItem: Hashable {
     case pictures(GalleryFilter)
     case composition(UUID)
-    case workflow(UUID)
 }
 
 /// All pictures, those in no folder, the folders (inside each other), the
@@ -18,10 +17,6 @@ struct SidebarView: View {
     @State private var removing: GalleryFolder?
     @State private var renamingComposition: Composition?
     @State private var removingComposition: Composition?
-    @State private var renamingWorkflow: WorkflowEntry?
-    @State private var removingWorkflow: WorkflowEntry?
-    @State private var importingWorkflow = false
-    @State private var exportingWorkflow: NodeEditorView.ExportFile?
     @State private var renamingTag: String?
     @State private var removingTag: String?
 
@@ -29,7 +24,6 @@ struct SidebarView: View {
         let gallery = app.gallery
         let index = gallery.index
         let compositions = app.compositions
-        let workflows = app.workflows
         List(selection: selection) {
             Section {
                 row("All Pictures", "photo.on.rectangle.angled", .all, count: index.count(.all))
@@ -72,28 +66,6 @@ struct SidebarView: View {
                         }
                 }
             }
-            Section("Workflows") {
-                ForEach(workflows.list) { w in
-                    Label(w.name, systemImage: "point.3.connected.trianglepath.dotted")
-                        .lineLimit(1)
-                        .tag(SidebarItem.workflow(w.id))
-                        .contextMenu {
-                            Button("Rename…", systemImage: "pencil") {
-                                newName = w.name
-                                renamingWorkflow = w
-                            }
-                            Button("Duplicate", systemImage: "plus.square.on.square") { workflows.duplicate(w.id) }
-                            Button("Export…", systemImage: "square.and.arrow.up") {
-                                if let data = workflows.data(of: w.id) {
-                                    exportingWorkflow = .init(document: JSONFile(data: data), name: "\(w.name).json")
-                                }
-                            }
-                            Button("Delete Workflow…", systemImage: "trash", role: .destructive) {
-                                removingWorkflow = w
-                            }
-                        }
-                }
-            }
         }
         .navigationTitle("Lightbox")
         .safeAreaInset(edge: .bottom) {
@@ -111,17 +83,6 @@ struct SidebarView: View {
                     .labelStyle(.iconOnly)
                     .buttonStyle(.borderless)
                     .help("A new composition; add gallery pictures to it as layers")
-                Menu("New Workflow", systemImage: "point.3.connected.trianglepath.dotted") {
-                    Button("New Workflow", systemImage: "plus") { workflows.create() }
-                    Button("Import ComfyUI Workflow…", systemImage: "square.and.arrow.down") {
-                        importingWorkflow = true
-                    }
-                }
-                .labelStyle(.iconOnly)
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help("A workflow for the node editor: new, or a ComfyUI file (also a picture made by ComfyUI)")
             }
             .padding(10)
         }
@@ -172,51 +133,6 @@ struct SidebarView: View {
         } message: {
             Text("It is taken off every picture; the pictures stay.")
         }
-        .fileImporter(isPresented: $importingWorkflow, allowedContentTypes: [.json, .png]) { result in
-            guard case .success(let url) = result else { return }
-            do {
-                let data = try readPickedFile(url)
-                workflows.importFile(
-                    data, name: url.deletingPathExtension().lastPathComponent, catalog: app.catalog)
-            } catch {
-                workflows.problem = "Could not open the file: \(error.localizedDescription)"
-            }
-        }
-        .fileExporter(
-            isPresented: Binding(get: { exportingWorkflow != nil }, set: { if !$0 { exportingWorkflow = nil } }),
-            document: exportingWorkflow?.document, contentType: .json, defaultFilename: exportingWorkflow?.name
-        ) { _ in exportingWorkflow = nil }
-        .alert(
-            "Workflows",
-            isPresented: Binding(get: { workflows.problem != nil }, set: { if !$0 { workflows.problem = nil } })
-        ) {
-            Button("OK") { workflows.problem = nil }
-        } message: {
-            Text(workflows.problem ?? "")
-        }
-        .alert(
-            "Rename Workflow",
-            isPresented: Binding(get: { renamingWorkflow != nil }, set: { if !$0 { renamingWorkflow = nil } })
-        ) {
-            TextField("Name", text: $newName)
-            Button("Rename") {
-                if let renamingWorkflow { workflows.rename(renamingWorkflow.id, to: newName) }
-                renamingWorkflow = nil
-            }
-            Button("Cancel", role: .cancel) { renamingWorkflow = nil }
-        }
-        .confirmationDialog(
-            "Delete the workflow “\(removingWorkflow?.name ?? "")”?",
-            isPresented: Binding(get: { removingWorkflow != nil }, set: { if !$0 { removingWorkflow = nil } }),
-            titleVisibility: .visible
-        ) {
-            Button("Delete Workflow", role: .destructive) {
-                if let removingWorkflow { workflows.delete(removingWorkflow.id) }
-                removingWorkflow = nil
-            }
-        } message: {
-            Text("Pictures made with it stay in the gallery, with the workflow as it was run.")
-        }
         .alert(
             "Rename Composition",
             isPresented: Binding(get: { renamingComposition != nil }, set: { if !$0 { renamingComposition = nil } })
@@ -245,22 +161,15 @@ struct SidebarView: View {
     private var selection: Binding<SidebarItem?> {
         Binding(
             get: {
-                if let editor = app.workflows.editor { return .workflow(editor.entry.id) }
-                return app.compositions.document.map { .composition($0.composition.id) }
-                    ?? .pictures(app.gallery.filter)
+                app.compositions.document.map { .composition($0.composition.id) } ?? .pictures(app.gallery.filter)
             },
             set: { item in
                 switch item {
                 case .pictures(let filter):
                     app.compositions.close()
-                    app.workflows.close()
                     app.gallery.filter = filter
                 case .composition(let id):
-                    app.workflows.close()
                     app.compositions.open(id)
-                case .workflow(let id):
-                    app.compositions.close()
-                    app.workflows.open(id)
                 case nil:
                     break
                 }
