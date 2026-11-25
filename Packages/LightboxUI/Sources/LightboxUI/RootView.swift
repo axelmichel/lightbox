@@ -31,6 +31,7 @@ public struct LightboxScenes: Scene {
 struct RootView: View {
     @Environment(AppModel.self) private var app
     @AppStorage(PanelKeys.generate) private var showGenerate = true
+    @AppStorage(PanelKeys.nodes) private var showNodes = false
     #if os(iOS)
         @State private var showSettings = false
     #endif
@@ -47,7 +48,7 @@ struct RootView: View {
                     ComposeView(doc: doc).id(doc.composition.id)
                 } else {
                     ResizableSplit(key: "promptPanelHeight") {
-                        GalleryGridView()
+                        if showNodes { NodeGraphView() } else { GalleryGridView() }
                     } bottom: {
                         PromptPanel()
                     }

@@ -136,11 +136,47 @@ public final class GenerationModel {
     public func generate(_ app: AppModel) {
         guard !isRunning else { return }
         guard let client = app.client else { return fail("Not connected to ComfyUI. Check the Settings.") }
-        guard var preset = preset(in: app.library) else { return fail("Create a preset first.") }
+        guard let preset = preset(in: app.library) else { return fail("Create a preset first.") }
         if let problem = preset.problem(with: app.catalog) { return fail(problem) }
         if !guides.isEmpty, !preset.family.supportsGuides {
             return fail("Guides don't work with \(preset.family.label) models yet; remove them to generate.")
         }
+        let seed = Int(seedText.trimmingCharacters(in: .whitespaces)) ?? Int.random(in: 0...Int(UInt32.max))
+        let prepared: Prepared
+        switch prepare(preset, seed: seed, app) {
+        case .success(let p): prepared = p
+        case .failure(let problem): return fail(problem.message)
+        }
+        let (recipe, guideImages) = (prepared.recipe, prepared.guideImages)
+        totalSteps = prepared.preset.steps
+        let gallery = app.gallery
+        run(prepared.request, client: client, catalog: app.catalog) { images in
+            gallery.add(
+                images.enumerated().map { index, image in
+                    var own = recipe
+                    own.batchIndex = index
+                    return (image.data, own)
+                }, guides: guideImages)
+        }
+    }
+
+    /// What a run of the form sends, and what the gallery keeps of it.
+    struct Prepared {
+        /// The preset at the size used.
+        var preset: GenerationPreset
+        var request: GenerationRequest
+        var recipe: GenerationRecipe
+        var guideImages: [String: Data]
+    }
+
+    struct Problem: Error {
+        var message: String
+    }
+
+    /// The request the form makes with `preset`: the prompt composed (and
+    /// so checked by the guard), the guides resolved, the finish applied.
+    func prepare(_ preset: GenerationPreset, seed: Int, _ app: AppModel) -> Result<Prepared, Problem> {
+        var preset = preset
         // The preset only gives the default size; the recipe records the one used.
         if let size {
             preset.width = size.width
@@ -152,7 +188,7 @@ public final class GenerationModel {
         do {
             prompt = try compose(input)
         } catch {
-            return fail(error.description)
+            return .failure(Problem(message: error.description))
         }
 
         var guideRequests: [GuideRequest] = []
@@ -164,7 +200,7 @@ public final class GenerationModel {
                         setup: setup, image: guide.data, filename: guide.filename, extract: guide.extract,
                         strength: guide.strength, startPercent: guide.startPercent, endPercent: guide.endPercent))
             case .failure(let missing):
-                return fail("\(guide.kind.title) guide: \(missing.message)")
+                return .failure(Problem(message: "\(guide.kind.title) guide: \(missing.message)"))
             }
         }
         let guideUses = guides.map {
@@ -181,7 +217,6 @@ public final class GenerationModel {
         let canFix = catalog.hasDetailer && preset.family != .flux2
         let faceDetector = canFix && finish.fixFaces ? catalog.faceDetector : nil
         let handDetector = canFix && finish.fixHands ? catalog.handDetector : nil
-        let seed = Int(seedText.trimmingCharacters(in: .whitespaces)) ?? Int.random(in: 0...Int(UInt32.max))
         var server = app.serverAddress
         if case .connected(let stats) = app.connection, let version = stats.system.comfyuiVersion {
             server += " · ComfyUI \(version)"
@@ -198,15 +233,18 @@ public final class GenerationModel {
                 DetailerRequest(detector: $0, denoise: finish.handStrength, guideSize: guideSize)
             })
 
-        totalSteps = preset.steps
-        let gallery = app.gallery
-        run(request, client: client, catalog: catalog) { images in
-            gallery.add(
-                images.enumerated().map { index, image in
-                    var own = recipe
-                    own.batchIndex = index
-                    return (image.data, own)
-                }, guides: guideImages)
+        return .success(Prepared(preset: preset, request: request, recipe: recipe, guideImages: guideImages))
+    }
+
+    /// What the form would send now, as a node-editor document. The seed is
+    /// the one typed, or 0 while it is random.
+    func graph(_ app: AppModel) -> Result<WorkflowDocument, Problem> {
+        guard let preset = preset(in: app.library) else { return .failure(Problem(message: "Create a preset first.")) }
+        let seed = Int(seedText.trimmingCharacters(in: .whitespaces)) ?? 0
+        return prepare(preset, seed: seed, app).flatMap { prepared in
+            let built = WorkflowBuilder.build(prepared.request, catalog: app.catalog)
+            return Result { () throws(WorkflowDocumentError) in try WorkflowDocument(built, catalog: app.catalog) }
+                .mapError { Problem(message: $0.description) }
         }
     }
 

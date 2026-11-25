@@ -20,6 +20,7 @@ struct GenerateView: View {
     @State private var importing = false
     @State private var showLoraInfo = false
     @State private var addingLora = false
+    @AppStorage(PanelKeys.nodes) private var showNodes = false
     /// Closes the panel; its button sits in the panel's own header.
     var close: (() -> Void)?
 
@@ -238,6 +239,9 @@ extension GenerateView {
         HStack(spacing: 10) {
             Text("Generate").font(.headline)
             Spacer()
+            Toggle("Nodes", systemImage: "point.3.connected.trianglepath.dotted", isOn: $showNodes)
+                .toggleStyle(.button)
+                .help(showNodes ? "Show the gallery" : "Show the node graph in place of the gallery")
             if let close {
                 PanelButton(title: "Hide the Generate panel", systemImage: "sidebar.trailing", action: close)
             }

@@ -206,6 +206,8 @@ struct PanelButton: View {
 enum PanelKeys {
     static let generate = "showGeneratePanel"
     static let layers = "composeLayersShown"
+    /// The node graph in place of the gallery.
+    static let nodes = "showNodeGraph"
 }
 
 /// The LoRA Info page's symbol (not the layers one, which is compositions').
