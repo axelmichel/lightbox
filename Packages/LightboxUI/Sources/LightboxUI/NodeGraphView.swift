@@ -41,8 +41,11 @@ struct NodeGraphView: View {
         Group {
             switch graph {
             case .success(let state):
-                NodeCanvas(state: state, catalog: app.catalog) { keepLayout($0, of: state) }
-                    .id(canvasID)
+                NodeCanvas(
+                    state: state, catalog: app.catalog, onMove: { keepLayout($0, of: state) },
+                    onEdit: { edit($0, $1, to: $2, in: state) }
+                )
+                .id(canvasID)
             case .failure(let problem):
                 ContentUnavailableView(
                     "No Graph", systemImage: "point.3.connected.trianglepath.dotted",
@@ -157,15 +160,28 @@ struct NodeGraphView: View {
     /// Nodes were moved: keep the layout in the workflow shown. The standard
     /// graph becomes a workflow of the preset first.
     private func keepLayout(_ moved: WorkflowDocument, of state: GenerationModel.GraphState) {
-        let workflows = app.workflows
-        if let shown = state.workflow {
-            workflows.change(shown.id, to: moved, "Move Nodes", undo: undo)
-        } else if let preset = app.generation.preset(in: app.library),
-            let entry = workflows.save(state.doc, name: workflows.uniqueName(preset.name), presetID: preset.id)
-        {
-            app.generation.workflowID = entry.id
-            workflows.change(entry.id, to: moved, "Move Nodes", undo: undo)
-        }
+        guard let id = state.workflow?.id ?? saveStandard(state) else { return }
+        app.generation.workflowID = id
+        app.workflows.change(id, to: moved, "Move Nodes", undo: undo)
+    }
+
+    /// A value changed in the graph: it goes into the form, which makes the
+    /// graph anew. The document itself isn't changed here.
+    private func edit(_ node: Int, _ input: String, to value: JSONValue, in state: GenerationModel.GraphState) {
+        var edited = state.doc
+        guard let i = edited.graph.index(of: node) else { return }
+        edited.graph.nodes[i].setWidgetValue(input, value, spec: app.catalog.nodes[edited.graph.nodes[i].type])
+        let changes = GraphChange.changes(
+            from: ManagedGraph(state.doc, catalog: app.catalog).settings,
+            to: ManagedGraph(edited, catalog: app.catalog).settings)
+        app.generation.applyGraph(changes, app) { saveStandard(state) }
+    }
+
+    /// The standard graph as a new workflow of the preset, for a change
+    /// that has to be kept in one.
+    private func saveStandard(_ state: GenerationModel.GraphState) -> UUID? {
+        guard let preset = app.generation.preset(in: app.library) else { return nil }
+        return app.workflows.save(state.doc, name: app.workflows.uniqueName(preset.name), presetID: preset.id)?.id
     }
 
     private var namingTitle: String {
@@ -209,6 +225,8 @@ struct NodeCanvas: View {
     let catalog: ComfyCatalog
     /// The document with nodes moved, once a drag ends.
     var onMove: (WorkflowDocument) -> Void = { _ in }
+    /// A widget's new value: node, input, value.
+    var onEdit: (Int, String, JSONValue) -> Void = { _, _, _ in }
 
     /// `nil`: fitted to the view.
     @State private var viewport: NodeViewport?
@@ -216,6 +234,8 @@ struct NodeCanvas: View {
     @State private var zoomStart: NodeViewport?
     @State private var selection: Set<Int> = []
     @State private var nodeDrag: NodeDrag?
+    /// The widget being edited, over its row.
+    @State private var editing: RowEdit.Target?
 
     /// The document as shown: with the nodes being dragged where they are now.
     private var doc: WorkflowDocument {
@@ -297,9 +317,12 @@ struct NodeCanvas: View {
             .simultaneousGesture(
                 SpatialTapGesture()
                     .onEnded { tap in
-                        let hit = NodeEditing.node(
-                            at: shown.toCanvas(tap.location), in: doc.graph.nodes, layouts: layouts)
+                        let point = shown.toCanvas(tap.location)
+                        let hit = NodeEditing.node(at: point, in: doc.graph.nodes, layouts: layouts)
                         selection = NodeEditing.select(hit, in: selection, extend: extendsSelection)
+                        if let hit, let node = doc.graph.node(hit), let layout = layouts[hit] {
+                            editing = RowEdit.target(node, layout, role: roles[hit], at: point, catalog: catalog)
+                        }
                     }
             )
             .simultaneousGesture(
@@ -327,6 +350,24 @@ struct NodeCanvas: View {
                 }
             #endif
             .overlay(alignment: .bottomTrailing) { controls(shown, size: size) }
+            .overlay(alignment: .topLeading) {
+                if let target = editing,
+                    let row = layouts[target.node]?.rows.first(where: {
+                        $0.name == target.input && $0.kind == .value
+                    })
+                {
+                    // Over the row, as drawn: inset, then into the view.
+                    let r = row.rect.insetBy(dx: 12, dy: 0)
+                    let origin = shown.toView(r.origin)
+                    RowEditor(target: target) { value in
+                        editing = nil
+                        if let value { onEdit(target.node, target.input, value) }
+                    }
+                    .frame(width: max(r.width * shown.scale, 140), height: max(r.height * shown.scale, 24))
+                    .offset(x: origin.x, y: origin.y)
+                    .id(target)
+                }
+            }
         }
     }
 

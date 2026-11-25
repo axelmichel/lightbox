@@ -53,6 +53,17 @@ struct GenerateView: View {
                 presetPicker(preset)
             }
 
+            // What the workflow shown in the node graph changes; the preset stays as it is.
+            if let preset, let workflow = gen.shownWorkflow(app, preset: preset), !workflow.overrides.isEmpty {
+                Section {
+                    ForEach(workflow.overrides.lines(for: preset), id: \.self) { Text($0) }
+                } header: {
+                    Text("Changed in “\(workflow.name)”")
+                } footer: {
+                    Text("Set in the node graph. The preset itself is unchanged.")
+                }
+            }
+
             Section("Picture") {
                 if let preset {
                     Toggle(

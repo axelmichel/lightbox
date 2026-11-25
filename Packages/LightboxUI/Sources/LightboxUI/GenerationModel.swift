@@ -288,6 +288,45 @@ public final class GenerationModel {
         }
     }
 
+    /// What the form holds that the node graph can change.
+    func graphTarget(_ app: AppModel) -> GraphTarget? {
+        guard let preset = preset(in: app.library) else { return nil }
+        var t = GraphTarget(preset: preset)
+        t.overrides = shownWorkflow(app, preset: preset)?.overrides ?? PresetOverrides()
+        t.size = size
+        t.seedText = seedText
+        t.extraLoras = app.library.extraLoras
+        t.guides = guides.map {
+            GraphTarget.GuideReach(strength: $0.strength, start: $0.startPercent, end: $0.endPercent)
+        }
+        t.finish = app.library.finish
+        return t
+    }
+
+    /// Values changed in the node graph go into the form. Preset values
+    /// become the shown workflow's overrides; on the standard graph that
+    /// workflow is saved first (`saveStandard` gives its id).
+    func applyGraph(_ changes: [GraphChange], _ app: AppModel, saveStandard: () -> UUID?) {
+        guard !changes.isEmpty, var t = graphTarget(app) else { return }
+        let before = t
+        for change in changes { t.apply(change) }
+        size = t.size
+        seedText = t.seedText
+        if app.library.extraLoras != t.extraLoras { app.library.extraLoras = t.extraLoras }
+        for (i, reach) in t.guides.enumerated() where guides.indices.contains(i) {
+            (guides[i].strength, guides[i].startPercent, guides[i].endPercent) = (
+                reach.strength, reach.start, reach.end
+            )
+        }
+        if app.library.finish != t.finish { app.library.finish = t.finish }
+        guard t.overrides != before.overrides else { return }
+        let id = shownWorkflow(app, preset: t.preset)?.id ?? saveStandard()
+        if let id {
+            workflowID = id
+            app.workflows.setOverrides(id, t.overrides)
+        }
+    }
+
     /// The chosen workflow, if it is the preset's or has no preset.
     func shownWorkflow(_ app: AppModel, preset: GenerationPreset) -> WorkflowEntry? {
         guard let entry = workflowID.flatMap(app.workflows.entry) else { return nil }

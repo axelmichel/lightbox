@@ -89,3 +89,16 @@ func changesComeBackFromTheGraph(_ change: GraphChange) throws {
     a.loras.removeLast()
     #expect(GraphChange.changes(from: a, to: try settings(target())).isEmpty)
 }
+
+@Test func overridesReadWithThePresetsValues() {
+    var o = PresetOverrides()
+    o.steps = 12
+    o.cfg = 3.5
+    o.checkpoint = "sdxl/photo-xl-v2.safetensors"
+    #expect(
+        o.lines(for: preset) == [
+            "Model: photo-xl-v2.safetensors (preset photo-xl.safetensors)", "Steps: 12 (preset 30)",
+            "CFG: 3.5 (preset 5)",
+        ])
+    #expect(PresetOverrides().lines(for: preset).isEmpty)
+}

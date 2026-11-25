@@ -125,3 +125,28 @@ struct GraphTarget: Equatable {
         overrides = overrides.trimmed(for: preset)
     }
 }
+
+extension PresetOverrides {
+    /// One line per value the workflow changes, with the preset's own:
+    /// "Steps: 12 (preset 30)".
+    func lines(for preset: GenerationPreset) -> [String] {
+        func number(_ d: Double) -> String { NodeRowText.value(.double(d)) }
+        func file(_ s: String?) -> String { s.map { ($0 as NSString).lastPathComponent } ?? "—" }
+        var out: [String] = []
+        if let checkpoint { out.append("Model: \(file(checkpoint)) (preset \(file(preset.checkpoint)))") }
+        if let vae { out.append("VAE: \(file(vae)) (preset \(file(preset.vae)))") }
+        if let textEncoders {
+            out.append(
+                "Text encoders: \(textEncoders.map(file).joined(separator: ", ")) "
+                    + "(preset \(preset.textEncoders.map(file).joined(separator: ", ")))")
+        }
+        if let sampler { out.append("Sampler: \(sampler) (preset \(preset.sampler))") }
+        if let scheduler { out.append("Scheduler: \(scheduler) (preset \(preset.scheduler))") }
+        if let steps { out.append("Steps: \(steps) (preset \(preset.steps))") }
+        if let cfg { out.append("CFG: \(number(cfg)) (preset \(number(preset.cfg)))") }
+        if let clipSkip { out.append("CLIP skip: \(clipSkip) (preset \(preset.clipSkip))") }
+        if let guidance { out.append("Guidance: \(number(guidance)) (preset \(number(preset.guidance)))") }
+        if let shift { out.append("Shift: \(number(shift)) (preset \(number(preset.shift)))") }
+        return out
+    }
+}

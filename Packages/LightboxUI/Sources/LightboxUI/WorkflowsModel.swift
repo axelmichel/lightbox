@@ -105,6 +105,18 @@ public final class WorkflowsModel {
         }
     }
 
+    /// The preset values workflow `id` changes.
+    func setOverrides(_ id: UUID, _ overrides: PresetOverrides) {
+        guard var entry = entry(id), entry.overrides != overrides, let doc = document(id) else { return }
+        entry.overrides = overrides
+        do {
+            try store.save(entry, data: doc.data())
+            reload()
+        } catch {
+            problem = "Could not save the workflow: \(error.localizedDescription)"
+        }
+    }
+
     func rename(_ id: UUID, to name: String) {
         do {
             try store.rename(id, to: name)

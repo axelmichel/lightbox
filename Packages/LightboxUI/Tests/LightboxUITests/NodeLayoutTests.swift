@@ -6,7 +6,7 @@ import Testing
 
 /// A node as `ApiLayout` makes it: a slot for every input, widget inputs
 /// named as such.
-private func node(_ type: String, _ spec: NodeSpec, at position: CGPoint, size: CGSize) -> GraphNode {
+func node(_ type: String, _ spec: NodeSpec, at position: CGPoint, size: CGSize) -> GraphNode {
     var n = GraphNode(id: 1, type: type, position: position, size: size)
     n.inputs = spec.inputOrder.compactMap { name in
         spec.inputs[name].map { NodeInputSlot(name: name, type: $0.type, widget: $0.isWidget ? name : nil) }
@@ -15,7 +15,7 @@ private func node(_ type: String, _ spec: NodeSpec, at position: CGPoint, size: 
     return n
 }
 
-private let kSampler: NodeSpec = {
+let kSampler: NodeSpec = {
     var seed = InputSpec(type: "INT")
     seed.controlAfterGenerate = true
     return NodeSpec(
@@ -26,7 +26,7 @@ private let kSampler: NodeSpec = {
         optional: [],
         inputs: [
             "model": InputSpec(type: "MODEL"), "seed": seed, "steps": InputSpec(type: "INT"),
-            "cfg": InputSpec(type: "FLOAT"), "sampler_name": InputSpec(type: "COMBO", options: ["euler"]),
+            "cfg": InputSpec(type: "FLOAT"), "sampler_name": InputSpec(type: "COMBO", options: ["euler", "dpmpp_2m"]),
             "scheduler": InputSpec(type: "COMBO", options: ["normal"]), "positive": InputSpec(type: "CONDITIONING"),
             "negative": InputSpec(type: "CONDITIONING"), "latent_image": InputSpec(type: "LATENT"),
             "denoise": InputSpec(type: "FLOAT"),
