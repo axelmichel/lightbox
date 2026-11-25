@@ -59,3 +59,36 @@ struct ResizableSplit<Top: View, Bottom: View>: View {
         .accessibilityLabel("Resize the prompt panel")
     }
 }
+
+/// The divider on a side panel's left edge; dragging it changes the
+/// panel's width, kept within `range`.
+struct PanelResizeHandle: View {
+    @Binding var width: Double
+    var range: ClosedRange<Double>
+    @State private var dragStart: Double?
+
+    var body: some View {
+        Divider()
+            .overlay {
+                // Wider than the line, so it is easy to grab.
+                Color.clear
+                    .frame(width: 9)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                            .onChanged { drag in
+                                let start = dragStart ?? width
+                                dragStart = start
+                                width = min(max(start - drag.translation.width, range.lowerBound), range.upperBound)
+                            }
+                            .onEnded { _ in dragStart = nil }
+                    )
+                    #if os(macOS)
+                        .onHover { inside in
+                            if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                        }
+                    #endif
+                    .accessibilityLabel("Resize the panel")
+            }
+    }
+}

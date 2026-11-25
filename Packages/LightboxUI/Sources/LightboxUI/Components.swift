@@ -121,9 +121,12 @@ struct SizeFields: View {
             }
             .fixedSize()
             .help("Picture format")
-            TextField("Width", value: rounded($width), format: .number).frame(minWidth: 60)
+            // Short labels: forms show them beside the fields, and side panels are narrow.
+            TextField("w", value: rounded($width), format: .number).frame(minWidth: 52)
+                .accessibilityLabel("Width")
             Text("×").foregroundStyle(.secondary)
-            TextField("Height", value: rounded($height), format: .number).frame(minWidth: 60)
+            TextField("h", value: rounded($height), format: .number).frame(minWidth: 52)
+                .accessibilityLabel("Height")
             Button("Swap", systemImage: "arrow.left.arrow.right") { (width, height) = (height, width) }
                 .labelStyle(.iconOnly)
                 .help("Swap width and height")
@@ -208,6 +211,9 @@ enum PanelKeys {
     static let layers = "composeLayersShown"
     /// The node graph in place of the gallery.
     static let nodes = "showNodeGraph"
+    static let layersWidth = "composeLayersWidth"
+    /// Edit with Model / Redraw Area as a card over the canvas.
+    static let modelEditOpen = "composeModelEditOverCanvas"
 }
 
 /// The LoRA Info page's symbol (not the layers one, which is compositions').

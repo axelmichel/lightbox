@@ -301,18 +301,17 @@ private struct CanvasInspector: View {
             TextField(
                 "Name",
                 text: Binding(get: { c.name }, set: { name in doc.change("Rename", undo: nil) { $0.name = name } }))
-            LabeledContent("Size") {
-                SizeFields(
-                    width: Binding(
-                        get: { c.width },
-                        set: { w in doc.change("Canvas Size", undo: undo) { $0.setCanvas(width: w, height: $0.height) }
-                        }),
-                    height: Binding(
-                        get: { c.height },
-                        set: { h in doc.change("Canvas Size", undo: undo) { $0.setCanvas(width: $0.width, height: h) } }
-                    ),
-                    size: { $0.size(area: c.width * c.height, step: 8) })
-            }
+            // The format menu leads the row; a label beside it doesn't fit the panel.
+            SizeFields(
+                width: Binding(
+                    get: { c.width },
+                    set: { w in doc.change("Canvas Size", undo: undo) { $0.setCanvas(width: w, height: $0.height) } }),
+                height: Binding(
+                    get: { c.height },
+                    set: { h in doc.change("Canvas Size", undo: undo) { $0.setCanvas(width: $0.width, height: h) } }),
+                size: { $0.size(area: c.width * c.height, step: 8) }
+            )
+            .help("Canvas size")
             Button("Fit Canvas to Layers") {
                 doc.change("Fit Canvas to Layers", undo: undo) { $0.fitCanvasToLayers() }
             }
@@ -343,15 +342,33 @@ private struct CanvasInspector: View {
 /// Paint the selected part of the layer again with a model (inpainting).
 /// Painting with the model: the selected pixels of a layer (`layer`), or
 /// with `layer` nil the area dragged with the area tool, across all layers.
-private struct ModelEditSection: View {
+struct ModelEditSection: View {
     @Bindable var doc: ComposeDocument
     let layer: CompositionLayer?
+    /// Shown in the card over the canvas, with room for a longer prompt.
+    var overCanvas = false
+    @AppStorage(PanelKeys.modelEditOpen) private var openOverCanvas = false
     @Environment(AppModel.self) private var app
     @Environment(\.undoManager) private var undo
 
+    private var title: String { layer == nil ? "Redraw Area" : "Edit with Model" }
+
     var body: some View {
+        if openOverCanvas && !overCanvas {
+            Section(title) {
+                Label("Open over the canvas.", systemImage: "macwindow").foregroundStyle(.secondary)
+                Button("Put Back in the Panel", systemImage: "arrow.down.right.and.arrow.up.left") {
+                    withAnimation { openOverCanvas = false }
+                }
+            }
+        } else {
+            section
+        }
+    }
+
+    private var section: some View {
         let preset = doc.editPreset(app)
-        Section(layer == nil ? "Redraw Area" : "Edit with Model") {
+        return Section {
             Picker(
                 "Preset",
                 selection: Binding(get: { preset?.id }, set: { doc.editPresetID = $0 })
@@ -361,7 +378,7 @@ private struct ModelEditSection: View {
             PromptField(
                 title: "What should be there", text: $doc.editPrompt,
                 placeholder: preset?.dialect == .tags ? "red scarf, smiling" : "a red scarf around her neck",
-                height: 64)
+                height: overCanvas ? 180 : 64)
             LabeledContent("Strength") {
                 HStack {
                     Slider(value: $doc.editStrength, in: 0.2...1)
@@ -404,6 +421,19 @@ private struct ModelEditSection: View {
             if let edits = layer?.edits, !edits.isEmpty {
                 Text(edits.count == 1 ? "Painted again once." : "Painted again \(edits.count) times.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+        } header: {
+            HStack {
+                Text(title)
+                Spacer()
+                Button(
+                    overCanvas ? "Put Back in the Panel" : "Open over the Canvas",
+                    systemImage: overCanvas
+                        ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"
+                ) { withAnimation { openOverCanvas = !overCanvas } }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .help(overCanvas ? "Put it back in the layer panel" : "Open it larger, over the canvas")
             }
         }
     }

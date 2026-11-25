@@ -14,23 +14,61 @@ struct ComposeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(PanelKeys.layers) private var layersShown = true
     @AppStorage(PanelKeys.generate) private var showGenerate = true
+    @AppStorage(PanelKeys.layersWidth) private var layersWidth = 300.0
+    @AppStorage(PanelKeys.modelEditOpen) private var modelEditOpen = false
+
+    /// What Edit with Model works on, as the layer panel shows it: the area
+    /// dragged (`.some(nil)`), or the one layer selected.
+    private var modelEditTarget: CompositionLayer?? {
+        if doc.area != nil { return .some(nil) }
+        guard doc.selectedLayers.count <= 1, let layer = doc.selectedLayer else { return nil }
+        return .some(layer)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
             ComposeCanvas(doc: doc)
+                .overlay(alignment: .bottomTrailing) {
+                    if modelEditOpen, let target = modelEditTarget {
+                        Form { ModelEditSection(doc: doc, layer: target, overCanvas: true) }
+                            .formStyle(.grouped)
+                            .scrollContentBackground(.hidden)
+                            .frame(width: 480, height: 420)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                            .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(.separator) }
+                            .shadow(radius: 12)
+                            .padding(12)
+                            .transition(.opacity)
+                    }
+                }
                 .overlay(alignment: .top) {
                     if doc.tool != .move { SelectionBar(doc: doc).padding(10) }
                 }
                 .overlay(alignment: .bottomLeading) {
-                    Button(doc.unsaved ? "Save" : "Saved", systemImage: "square.and.arrow.down") { doc.save() }
+                    // Unsaved changes stand out: a dot and the accent colour.
+                    Button {
+                        doc.save()
+                    } label: {
+                        HStack(spacing: 6) {
+                            if doc.unsaved {
+                                Circle().fill(Color.accentColor).frame(width: 7, height: 7)
+                                Label("Save", systemImage: "square.and.arrow.down")
+                            } else {
+                                Label("Saved", systemImage: "checkmark")
+                            }
+                        }
                         .labelStyle(.titleAndIcon)
-                        .buttonStyle(.borderless)
-                        .keyboardShortcut("s")
-                        .help(doc.unsaved ? "Save the composition (⌘S)" : "All changes are saved")
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(.regularMaterial, in: Capsule())
-                        .padding(10)
+                        .foregroundStyle(doc.unsaved ? Color.accentColor : Color.secondary)
+                        .fontWeight(doc.unsaved ? .semibold : .regular)
+                    }
+                    .buttonStyle(.borderless)
+                    .keyboardShortcut("s")
+                    .accessibilityLabel(doc.unsaved ? "Save, unsaved changes" : "Saved")
+                    .help(doc.unsaved ? "Save the composition (⌘S)" : "All changes are saved")
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(10)
                 }
                 // Closed, the layer panel's button (and the Generate panel's,
                 // if that is closed too) sit top right, where they were.
@@ -55,9 +93,9 @@ struct ComposeView: View {
                     }
                 }
             if layersShown {
-                Divider()
+                PanelResizeHandle(width: $layersWidth, range: 260...560)
                 ComposeSidePanel(doc: doc) { layersShown = false }
-                    .frame(width: 300)
+                    .frame(width: min(max(layersWidth, 260), 560))
                     .transition(.move(edge: .trailing))
             }
         }
