@@ -87,6 +87,7 @@ Put your Team ID into it (`DEVELOPMENT_TEAM = …`). Set your own `PRODUCT_BUNDL
 ```
 (cd Packages/LightboxCore && swift test)
 (cd Packages/ComfyKit && swift test)
+(cd Packages/LightboxUI && swift test)
 xcodebuild -project Lightbox.xcodeproj -scheme Lightbox -destination 'platform=macOS' build
 xcodebuild -project Lightbox.xcodeproj -scheme Lightbox -destination 'generic/platform=iOS Simulator' build
 swift format lint -r App Packages

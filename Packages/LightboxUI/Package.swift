@@ -12,6 +12,7 @@ let package = Package(
         .package(path: "../LightboxCore"),
     ],
     targets: [
-        .target(name: "LightboxUI", dependencies: ["ComfyKit", "LightboxCore"])
+        .target(name: "LightboxUI", dependencies: ["ComfyKit", "LightboxCore"]),
+        .testTarget(name: "LightboxUITests", dependencies: ["LightboxUI", "ComfyKit", "LightboxCore"]),
     ]
 )
