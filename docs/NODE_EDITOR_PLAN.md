@@ -266,7 +266,8 @@ Workflows · Live-Vorschau am Knoten · iPad-Touch.
   nur auf den Workflow verweisen (klein, aber spätere Änderungen am Workflow verfälschen die Herkunft)?
 - **F2 (vor 3.2), entschieden:** Hat ein Preset Workflows, fragt das Löschen nach. Standard ist „Preset und
   Workflows löschen“; die Alternative „Workflows behalten“ lässt sie ohne Preset stehen.
-- **F3 (vor 4.3)** Gilt die zuletzt gewählte Workflow-Auswahl pro Preset oder global für Generate?
+- **F3 (vor 4.3), entschieden:** Die Workflow-Auswahl gilt pro Preset und übersteht einen Neustart; beim
+  Wechsel des Presets erscheint dessen zuletzt gewählter Workflow (oder „Standard“).
 - **F4 (vor 6.2)** Sollen in der Knotensuche alle Knoten des Servers erscheinen oder zuerst eine kuratierte Auswahl?
 
 ## 9. Risiken
