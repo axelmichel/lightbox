@@ -5,7 +5,7 @@ import Testing
 
 /// Requests covering every way `WorkflowBuilder` builds a graph: both
 /// loaders, LoRAs, guides, fix passes, inpainting and edit references.
-private func requests() throws -> [(name: String, request: GenerationRequest)] {
+func requests() throws -> [(name: String, request: GenerationRequest)] {
     let c = try kritaCatalog()
     func guide(_ kind: ControlKind, _ file: String, arch: ModelArch = .illustrious, extract: Bool = true) throws
         -> GuideRequest
