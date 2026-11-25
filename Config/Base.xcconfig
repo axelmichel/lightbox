@@ -1,0 +1,7 @@
+// Shared build settings for the Lightbox app target.
+// Personal settings (signing team, bundle ID) go in Local.xcconfig,
+// which is not in git. Copy Local.xcconfig.example to start.
+
+PRODUCT_BUNDLE_IDENTIFIER = com.example.lightbox
+
+#include? "Local.xcconfig"

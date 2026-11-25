@@ -1,0 +1,13 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+Packages/*/Package.resolved
+
+# Personal notes for Claude Code (server names, preferences)
+CLAUDE.local.md
+
+# Personal signing settings (team ID)
+Config/Local.xcconfig
