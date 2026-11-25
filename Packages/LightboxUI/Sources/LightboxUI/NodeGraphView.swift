@@ -8,8 +8,8 @@ struct NodeGraphView: View {
 
     var body: some View {
         switch app.generation.graph(app) {
-        case .success(let doc):
-            NodeCanvas(doc: doc, catalog: app.catalog)
+        case .success(let state):
+            NodeCanvas(state: state, catalog: app.catalog)
         case .failure(let problem):
             ContentUnavailableView(
                 "No Graph", systemImage: "point.3.connected.trianglepath.dotted",
@@ -20,8 +20,10 @@ struct NodeGraphView: View {
 
 /// A document's nodes and links, scaled so all of it is in view.
 struct NodeCanvas: View {
-    let doc: WorkflowDocument
+    let state: GenerationModel.GraphState
     let catalog: ComfyCatalog
+
+    private var doc: WorkflowDocument { state.doc }
 
     static let margin = 24.0
 
@@ -29,6 +31,7 @@ struct NodeCanvas: View {
         let layouts = Dictionary(
             doc.graph.nodes.map { ($0.id, NodeLayout($0, spec: catalog.nodes[$0.type])) },
             uniquingKeysWith: { a, _ in a })
+        let roles = doc.roles
         Canvas { context, size in
             context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(NodeColors.canvas))
             let bounds = layouts.values.reduce(CGRect.null) { $0.union($1.bounds) }
@@ -42,7 +45,7 @@ struct NodeCanvas: View {
             context.scaleBy(x: scale, y: scale)
             for link in doc.graph.links { draw(link, layouts, in: context) }
             for node in doc.graph.nodes {
-                if let layout = layouts[node.id] { draw(node, layout, in: context) }
+                if let layout = layouts[node.id] { draw(node, layout, role: roles[node.id], in: context) }
             }
         }
     }
@@ -61,7 +64,7 @@ struct NodeCanvas: View {
         context.stroke(path, with: .color(NodeColors.type(link.type)), lineWidth: 3)
     }
 
-    private func draw(_ node: GraphNode, _ layout: NodeLayout, in context: GraphicsContext) {
+    private func draw(_ node: GraphNode, _ layout: NodeLayout, role: NodeRole?, in context: GraphicsContext) {
         let corner = 8.0
         context.fill(Path(roundedRect: layout.bounds, cornerRadius: corner), with: .color(NodeColors.body))
         let title = UnevenRoundedRectangle(
@@ -74,15 +77,8 @@ struct NodeCanvas: View {
             at: CGPoint(x: layout.titleRect.minX + 12, y: layout.titleRect.midY), anchor: .leading)
         guard !node.collapsed else { return }
 
-        for row in layout.rows where row.kind == .value {
-            let rect = row.rect.insetBy(dx: 12, dy: 0)
-            context.fill(
-                Path(roundedRect: rect, cornerRadius: row.multiline ? 6 : rect.height / 2),
-                with: .color(NodeColors.widget))
-            context.draw(
-                Text(row.name).font(.system(size: 11)).foregroundStyle(NodeColors.label),
-                at: CGPoint(x: rect.minX + 10, y: row.multiline ? rect.minY + 10 : rect.midY), anchor: .leading)
-        }
+        let spec = catalog.nodes[node.type]
+        for row in layout.rows { draw(row, of: node, spec: spec, role: role, in: context) }
         // Sockets of widgets show only when something is linked in.
         let rowNames = Set(layout.rows.map(\.name))
         for (i, input) in node.inputs.enumerated() where i < layout.inputPoints.count {
@@ -103,6 +99,72 @@ struct NodeCanvas: View {
         }
     }
 
+    private func draw(
+        _ row: NodeLayout.Row, of node: GraphNode, spec: NodeSpec?, role: NodeRole?, in context: GraphicsContext
+    ) {
+        let rect = row.rect.insetBy(dx: 12, dy: 0)
+        context.fill(
+            Path(roundedRect: rect, cornerRadius: row.multiline ? 6 : rect.height / 2), with: .color(NodeColors.widget))
+        let locked = row.kind == .value && NodeRowText.isLocked(role, input: row.name)
+        let inset = rect.insetBy(dx: 10, dy: 0)
+        if locked {
+            var lock = context.resolve(Image(systemName: "lock.fill"))
+            lock.shading = .color(NodeColors.label)
+            let at = row.multiline ? CGPoint(x: inset.maxX, y: rect.minY + 10) : CGPoint(x: inset.maxX, y: rect.midY)
+            context.draw(lock, in: CGRect(x: at.x - 9, y: at.y - 5, width: 9, height: 10))
+        }
+        let name = row.kind == .control ? "control after generate" : row.name
+        let value: String
+        if row.kind == .control {
+            value = node.controlValue(row.name, spec: spec) ?? "—"
+        } else if state.randomSeed && ["seed", "noise_seed"].contains(row.name) {
+            value = "random"
+        } else {
+            value = NodeRowText.value(node.widgetValue(row.name, spec: spec))
+        }
+        let small = Font.system(size: 11)
+        if row.multiline {
+            context.draw(
+                Text(name).font(small).foregroundStyle(NodeColors.label),
+                at: CGPoint(x: inset.minX, y: rect.minY + 10), anchor: .leading)
+            // The composed prompt, or why the guard refused it.
+            let refused = state.refusal.flatMap { role?.kind == .positive ? $0 : nil }
+            let text = Text(refused ?? (value.isEmpty ? "—" : value)).font(small)
+                .foregroundStyle(refused == nil ? NodeColors.text : NodeColors.error)
+            context.draw(
+                text, in: CGRect(x: inset.minX, y: rect.minY + 20, width: inset.width, height: rect.height - 24))
+        } else {
+            // ComfyUI's row: the name on the left, the value on the right.
+            let room = inset.width - (locked ? 14 : 0)
+            let label = Self.fitted(name, width: room * 0.45, font: small, in: context)
+            context.draw(
+                Text(label).font(small).foregroundStyle(NodeColors.label),
+                at: CGPoint(x: inset.minX, y: rect.midY), anchor: .leading)
+            let shown = Self.fitted(value, width: room * 0.55 - 6, font: small, in: context)
+            context.draw(
+                Text(shown).font(small).foregroundStyle(NodeColors.text),
+                at: CGPoint(x: inset.minX + room, y: rect.midY), anchor: .trailing)
+        }
+    }
+
+    /// `text` shortened in the middle ("checkpo…v1.safetensors") to fit.
+    static func fitted(_ text: String, width: Double, font: Font, in context: GraphicsContext) -> String {
+        func fits(_ s: String) -> Bool {
+            context.resolve(Text(s).font(font)).measure(in: CGSize(width: CGFloat.infinity, height: 100)).width <= width
+        }
+        guard !fits(text) else { return text }
+        func cut(_ keep: Int) -> String {
+            let head = keep - keep / 2
+            return String(text.prefix(head)) + "…" + String(text.suffix(keep / 2))
+        }
+        var (low, high) = (0, text.count - 1)
+        while low < high {
+            let mid = (low + high + 1) / 2
+            if fits(cut(mid)) { low = mid } else { high = mid - 1 }
+        }
+        return cut(low)
+    }
+
     private func socket(_ p: CGPoint, type: String, linked: Bool, in context: GraphicsContext) {
         let dot = Path(ellipseIn: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10))
         if linked {
@@ -121,6 +183,7 @@ enum NodeColors {
     static let text = Color(hex: 0xdddddd)
     static let label = Color(hex: 0xaaaaaa)
     static let widget = Color(hex: 0x222222)
+    static let error = Color(hex: 0xFF6E6E)
 
     /// ComfyUI's colours for link types.
     static func type(_ type: String) -> Color {

@@ -60,16 +60,9 @@ public struct ComposedPrompt: Codable, Hashable, Sendable {
 public func compose(_ input: PromptInput) throws(GuardError) -> ComposedPrompt {
     let preset = input.preset
 
-    // A LoRA that is in the preset and switched on again is loaded once,
-    // with the strength chosen for this generation.
-    var loras: [LoraUse] = []
-    func use(_ l: LoraSlot) {
-        let u = LoraUse(name: l.name, weight: l.strength, clipWeight: l.clipStrength)
-        if let i = loras.firstIndex(where: { $0.name == u.name }) { loras[i] = u } else { loras.append(u) }
-    }
+    let loras = composedLoras(input)
     let presetLoras = preset.loras.filter(\.isActive)
     let extraLoras = input.extraLoras.filter(\.isActive)
-    for l in presetLoras + extraLoras { use(l) }
     let triggers = (presetLoras + extraLoras).map(\.triggers)
 
     let looks = input.modifiers.map(\.positive)
@@ -91,6 +84,18 @@ public func compose(_ input: PromptInput) throws(GuardError) -> ComposedPrompt {
 
     return ComposedPrompt(
         positive: joinDedup(pos), negative: joinDedup(neg), loras: loras, minorSignal: result.minorSignal)
+}
+
+/// The LoRAs `compose` loads, in order. A LoRA that is in the preset and
+/// switched on again is loaded once, with the strength chosen for this
+/// generation.
+public func composedLoras(_ input: PromptInput) -> [LoraUse] {
+    var loras: [LoraUse] = []
+    for l in (input.preset.loras + input.extraLoras).filter(\.isActive) {
+        let u = LoraUse(name: l.name, weight: l.strength, clipWeight: l.clipStrength)
+        if let i = loras.firstIndex(where: { $0.name == u.name }) { loras[i] = u } else { loras.append(u) }
+    }
+    return loras
 }
 
 /// Add a fragment in canonical weight form, so its brackets are balanced and

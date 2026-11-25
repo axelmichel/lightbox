@@ -167,6 +167,9 @@ public final class GenerationModel {
         var request: GenerationRequest
         var recipe: GenerationRecipe
         var guideImages: [String: Data]
+        /// Why the guard refused the prompt, when it was left out to show
+        /// the graph anyway.
+        var refusal: String?
     }
 
     struct Problem: Error {
@@ -175,7 +178,12 @@ public final class GenerationModel {
 
     /// The request the form makes with `preset`: the prompt composed (and
     /// so checked by the guard), the guides resolved, the finish applied.
-    func prepare(_ preset: GenerationPreset, seed: Int, _ app: AppModel) -> Result<Prepared, Problem> {
+    /// With `showingRefused`, a prompt the guard refuses is left empty
+    /// instead of failing, so the graph can be shown with the reason. Such a
+    /// request has no text from the user in it and is never sent.
+    func prepare(_ preset: GenerationPreset, seed: Int, _ app: AppModel, showingRefused: Bool = false)
+        -> Result<Prepared, Problem>
+    {
         var preset = preset
         // The preset only gives the default size; the recipe records the one used.
         if let size {
@@ -185,10 +193,13 @@ public final class GenerationModel {
 
         let input = input(preset, app.library)
         let prompt: ComposedPrompt
+        var refusal: String?
         do {
             prompt = try compose(input)
         } catch {
-            return .failure(Problem(message: error.description))
+            guard showingRefused else { return .failure(Problem(message: error.description)) }
+            prompt = ComposedPrompt(positive: "", negative: "", loras: composedLoras(input))
+            refusal = error.description
         }
 
         var guideRequests: [GuideRequest] = []
@@ -233,17 +244,27 @@ public final class GenerationModel {
                 DetailerRequest(detector: $0, denoise: finish.handStrength, guideSize: guideSize)
             })
 
-        return .success(Prepared(preset: preset, request: request, recipe: recipe, guideImages: guideImages))
+        return .success(
+            Prepared(preset: preset, request: request, recipe: recipe, guideImages: guideImages, refusal: refusal))
     }
 
-    /// What the form would send now, as a node-editor document. The seed is
-    /// the one typed, or 0 while it is random.
-    func graph(_ app: AppModel) -> Result<WorkflowDocument, Problem> {
+    /// What the node graph shows.
+    struct GraphState {
+        var doc: WorkflowDocument
+        /// Why the guard refused the prompt; the prompt nodes are empty then.
+        var refusal: String?
+        /// No seed typed: each run picks one, the graph shows 0.
+        var randomSeed: Bool
+    }
+
+    /// What the form would send now, as a node-editor document.
+    func graph(_ app: AppModel) -> Result<GraphState, Problem> {
         guard let preset = preset(in: app.library) else { return .failure(Problem(message: "Create a preset first.")) }
-        let seed = Int(seedText.trimmingCharacters(in: .whitespaces)) ?? 0
-        return prepare(preset, seed: seed, app).flatMap { prepared in
+        let typed = Int(seedText.trimmingCharacters(in: .whitespaces))
+        return prepare(preset, seed: typed ?? 0, app, showingRefused: true).flatMap { prepared in
             let built = WorkflowBuilder.build(prepared.request, catalog: app.catalog)
             return Result { () throws(WorkflowDocumentError) in try WorkflowDocument(built, catalog: app.catalog) }
+                .map { GraphState(doc: $0, refusal: prepared.refusal, randomSeed: typed == nil) }
                 .mapError { Problem(message: $0.description) }
         }
     }
