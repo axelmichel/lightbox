@@ -5,49 +5,140 @@ import SwiftUI
 /// follows every change in the form; nothing can be changed here yet.
 struct NodeGraphView: View {
     @Environment(AppModel.self) private var app
+    @AppStorage(PanelKeys.generate) private var showGenerate = true
+    @AppStorage(PanelKeys.nodes) private var showNodes = false
 
     var body: some View {
-        switch app.generation.graph(app) {
-        case .success(let state):
-            NodeCanvas(state: state, catalog: app.catalog)
-        case .failure(let problem):
-            ContentUnavailableView(
-                "No Graph", systemImage: "point.3.connected.trianglepath.dotted",
-                description: Text(problem.message))
+        Group {
+            switch app.generation.graph(app) {
+            case .success(let state):
+                NodeCanvas(state: state, catalog: app.catalog)
+            case .failure(let problem):
+                ContentUnavailableView(
+                    "No Graph", systemImage: "point.3.connected.trianglepath.dotted",
+                    description: Text(problem.message))
+            }
         }
+        .safeAreaInset(edge: .top, spacing: 0) { header }
+    }
+
+    /// Like the gallery's bar, with the way back to it.
+    private var header: some View {
+        HStack(spacing: 10) {
+            Text("Nodes").font(.headline)
+            Text("What Generate sends").foregroundStyle(.secondary)
+            Spacer()
+            Button("Show the Gallery", systemImage: "photo.on.rectangle.angled") { showNodes = false }
+                .labelStyle(.titleAndIcon)
+                .controlSize(.small)
+            if !showGenerate {
+                // Where the Generate panel's own button was, at the same height.
+                PanelButton(title: "Show the Generate panel", systemImage: "sidebar.trailing") { showGenerate = true }
+                    .padding(.leading, 8)
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: PanelHeader.height)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Divider() }
     }
 }
 
-/// A document's nodes and links, scaled so all of it is in view.
+/// A document's nodes and links. Drag the background to move it, pinch
+/// (or on the Mac, scroll the wheel) to zoom. Until then all of it is in view.
 struct NodeCanvas: View {
     let state: GenerationModel.GraphState
     let catalog: ComfyCatalog
 
-    private var doc: WorkflowDocument { state.doc }
+    /// `nil`: fitted to the view.
+    @State private var viewport: NodeViewport?
+    @State private var panStart: NodeViewport?
+    @State private var zoomStart: NodeViewport?
 
-    static let margin = 24.0
+    private var doc: WorkflowDocument { state.doc }
 
     var body: some View {
         let layouts = Dictionary(
             doc.graph.nodes.map { ($0.id, NodeLayout($0, spec: catalog.nodes[$0.type])) },
             uniquingKeysWith: { a, _ in a })
         let roles = doc.roles
-        Canvas { context, size in
-            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(NodeColors.canvas))
-            let bounds = layouts.values.reduce(CGRect.null) { $0.union($1.bounds) }
-            guard !bounds.isNull, bounds.width > 0, bounds.height > 0 else { return }
-            let scale = min(
-                (size.width - 2 * Self.margin) / bounds.width, (size.height - 2 * Self.margin) / bounds.height, 1)
-            guard scale > 0 else { return }
-            context.translateBy(
-                x: (size.width - bounds.width * scale) / 2 - bounds.minX * scale,
-                y: (size.height - bounds.height * scale) / 2 - bounds.minY * scale)
-            context.scaleBy(x: scale, y: scale)
-            for link in doc.graph.links { draw(link, layouts, in: context) }
-            for node in doc.graph.nodes {
-                if let layout = layouts[node.id] { draw(node, layout, role: roles[node.id], in: context) }
+        let bounds = layouts.values.reduce(CGRect.null) { $0.union($1.bounds) }
+        GeometryReader { geometry in
+            let size = geometry.size
+            let shown = viewport ?? NodeViewport.fit(bounds, in: size)
+            Canvas { context, size in
+                context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(NodeColors.canvas))
+                context.translateBy(x: shown.offset.x, y: shown.offset.y)
+                context.scaleBy(x: shown.scale, y: shown.scale)
+                // Only what is in view.
+                let seen = CGRect(
+                    origin: shown.toCanvas(.zero),
+                    size: CGSize(width: size.width / shown.scale, height: size.height / shown.scale))
+                for link in doc.graph.links { draw(link, layouts, in: context) }
+                for node in doc.graph.nodes {
+                    guard let layout = layouts[node.id], layout.bounds.intersects(seen) else { continue }
+                    draw(node, layout, role: roles[node.id], in: context)
+                }
             }
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { value in
+                        let start = panStart ?? shown
+                        panStart = start
+                        viewport = start.panned(by: value.translation)
+                    }
+                    .onEnded { _ in panStart = nil }
+            )
+            .simultaneousGesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        let start = zoomStart ?? shown
+                        zoomStart = start
+                        viewport = start.zoomed(by: value.magnification, around: value.startLocation)
+                    }
+                    .onEnded { _ in zoomStart = nil }
+            )
+            #if os(macOS)
+                .background {
+                    ScrollCatcher { scroll in
+                        let current = viewport ?? NodeViewport.fit(bounds, in: size)
+                        if scroll.isPrecise && !scroll.command {
+                            // Trackpad: two fingers move the canvas.
+                            viewport = current.panned(by: scroll.delta)
+                        } else {
+                            // Wheel notches (or ⌘ + trackpad) zoom under the pointer.
+                            let amount = scroll.isPrecise ? scroll.delta.height / 100 : scroll.delta.height / 10
+                            viewport = current.zoomed(by: pow(2, amount), around: scroll.location)
+                        }
+                    }
+                }
+            #endif
+            .overlay(alignment: .bottomTrailing) { controls(shown, size: size) }
         }
+    }
+
+    private func controls(_ shown: NodeViewport, size: CGSize) -> some View {
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        return HStack(spacing: 2) {
+            Button("Zoom Out", systemImage: "minus.magnifyingglass") {
+                viewport = shown.zoomed(by: 1 / 1.25, around: center)
+            }
+            Text(shown.scale.formatted(.percent.precision(.fractionLength(0))))
+                .monospacedDigit().frame(minWidth: 44)
+            Button("Zoom In", systemImage: "plus.magnifyingglass") {
+                viewport = shown.zoomed(by: 1.25, around: center)
+            }
+            Button("Fit", systemImage: "arrow.down.right.and.arrow.up.left") { viewport = nil }
+                .help("Show the whole graph")
+                .disabled(viewport == nil)
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .font(.callout)
+        .padding(6)
+        .background(.regularMaterial, in: Capsule())
+        .padding(12)
     }
 
     private func draw(_ link: GraphLink, _ layouts: [Int: NodeLayout], in context: GraphicsContext) {
@@ -150,7 +241,10 @@ struct NodeCanvas: View {
     /// `text` shortened in the middle ("checkpo…v1.safetensors") to fit.
     static func fitted(_ text: String, width: Double, font: Font, in context: GraphicsContext) -> String {
         func fits(_ s: String) -> Bool {
-            context.resolve(Text(s).font(font)).measure(in: CGSize(width: CGFloat.infinity, height: 100)).width <= width
+            // No letter of the 11-point font is wider than 11 points: short texts need no measuring.
+            if Double(s.count) * 11 <= width { return true }
+            return context.resolve(Text(s).font(font)).measure(in: CGSize(width: CGFloat.infinity, height: 100)).width
+                <= width
         }
         guard !fits(text) else { return text }
         func cut(_ keep: Int) -> String {

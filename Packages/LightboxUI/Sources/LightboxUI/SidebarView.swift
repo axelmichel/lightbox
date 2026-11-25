@@ -19,6 +19,7 @@ struct SidebarView: View {
     @State private var removingComposition: Composition?
     @State private var renamingTag: String?
     @State private var removingTag: String?
+    @AppStorage(PanelKeys.nodes) private var showNodes = false
 
     var body: some View {
         let gallery = app.gallery
@@ -161,12 +162,15 @@ struct SidebarView: View {
     private var selection: Binding<SidebarItem?> {
         Binding(
             get: {
-                app.compositions.document.map { .composition($0.composition.id) } ?? .pictures(app.gallery.filter)
+                if let doc = app.compositions.document { return .composition(doc.composition.id) }
+                // While the node graph is shown no folder is, so any click brings the gallery back.
+                return showNodes ? nil : .pictures(app.gallery.filter)
             },
             set: { item in
                 switch item {
                 case .pictures(let filter):
                     app.compositions.close()
+                    showNodes = false
                     app.gallery.filter = filter
                 case .composition(let id):
                     app.compositions.open(id)
