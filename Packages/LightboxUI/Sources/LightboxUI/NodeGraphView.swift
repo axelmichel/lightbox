@@ -2,9 +2,14 @@ import ComfyKit
 import LightboxCore
 import SwiftUI
 
+#if os(macOS)
+    import AppKit
+#endif
+
 /// The graph the Generate form would send, drawn as ComfyUI shows it: the
 /// standard one, or a saved workflow brought up to date with the form. It
-/// follows every change in the form; nothing can be changed here yet.
+/// follows every change in the form. Nodes can be moved (the layout is kept
+/// in the workflow); values are still changed in the form.
 struct NodeGraphView: View {
     /// A name being typed for a workflow.
     private enum Naming: Identifiable {
@@ -25,6 +30,10 @@ struct NodeGraphView: View {
     @State private var naming: Naming?
     @State private var name = ""
     @State private var deleting: WorkflowEntry?
+    /// Renewed when another workflow is picked, so the canvas starts fitted;
+    /// not when moving a node saves the standard graph as a workflow.
+    @State private var canvasID = UUID()
+    @Environment(\.undoManager) private var undo
 
     var body: some View {
         let graph = app.generation.graph(app)
@@ -32,8 +41,8 @@ struct NodeGraphView: View {
         Group {
             switch graph {
             case .success(let state):
-                // A new view for another workflow: it starts fitted.
-                NodeCanvas(state: state, catalog: app.catalog).id(state.workflow?.id)
+                NodeCanvas(state: state, catalog: app.catalog) { keepLayout($0, of: state) }
+                    .id(canvasID)
             case .failure(let problem):
                 ContentUnavailableView(
                     "No Graph", systemImage: "point.3.connected.trianglepath.dotted",
@@ -101,7 +110,15 @@ struct NodeGraphView: View {
         let own = app.workflows.entries(for: preset.id)
         let loose = app.workflows.withoutPreset(app.library.presets)
         return Menu {
-            Picker("Workflow", selection: Binding(get: { shown?.id }, set: { gen.workflowID = $0 })) {
+            Picker(
+                "Workflow",
+                selection: Binding(
+                    get: { shown?.id },
+                    set: {
+                        gen.workflowID = $0
+                        canvasID = UUID()
+                    })
+            ) {
                 Text("Standard").tag(UUID?.none)
                 if !own.isEmpty {
                     Section(preset.name) {
@@ -137,6 +154,20 @@ struct NodeGraphView: View {
         .help("The workflow shown: the preset's standard graph, or one saved with its layout")
     }
 
+    /// Nodes were moved: keep the layout in the workflow shown. The standard
+    /// graph becomes a workflow of the preset first.
+    private func keepLayout(_ moved: WorkflowDocument, of state: GenerationModel.GraphState) {
+        let workflows = app.workflows
+        if let shown = state.workflow {
+            workflows.change(shown.id, to: moved, "Move Nodes", undo: undo)
+        } else if let preset = app.generation.preset(in: app.library),
+            let entry = workflows.save(state.doc, name: workflows.uniqueName(preset.name), presetID: preset.id)
+        {
+            app.generation.workflowID = entry.id
+            workflows.change(entry.id, to: moved, "Move Nodes", undo: undo)
+        }
+    }
+
     private var namingTitle: String {
         switch naming {
         case .rename?: "Rename the Workflow"
@@ -164,20 +195,44 @@ struct NodeGraphView: View {
     }
 }
 
-/// A document's nodes and links. Drag the background to move it, pinch
-/// (or on the Mac, scroll the wheel) to zoom. Until then all of it is in view.
+/// A document's nodes and links. Click a node to select it (⇧ or ⌘ for
+/// several) and drag to move them; drag the background to move the view,
+/// pinch (or on the Mac, scroll the wheel) to zoom. Until then all of it is in view.
 struct NodeCanvas: View {
+    /// Nodes being dragged, and how far (canvas units).
+    private struct NodeDrag {
+        var nodes: Set<Int>
+        var delta = CGSize.zero
+    }
+
     let state: GenerationModel.GraphState
     let catalog: ComfyCatalog
+    /// The document with nodes moved, once a drag ends.
+    var onMove: (WorkflowDocument) -> Void = { _ in }
 
     /// `nil`: fitted to the view.
     @State private var viewport: NodeViewport?
     @State private var panStart: NodeViewport?
     @State private var zoomStart: NodeViewport?
+    @State private var selection: Set<Int> = []
+    @State private var nodeDrag: NodeDrag?
 
-    private var doc: WorkflowDocument { state.doc }
+    /// The document as shown: with the nodes being dragged where they are now.
+    private var doc: WorkflowDocument {
+        nodeDrag.map { NodeEditing.moved(state.doc, $0.nodes, by: $0.delta) } ?? state.doc
+    }
+
+    /// ⇧ or ⌘ held: a click adds to the selection.
+    private var extendsSelection: Bool {
+        #if os(macOS)
+            !NSEvent.modifierFlags.intersection([.shift, .command]).isEmpty
+        #else
+            false
+        #endif
+    }
 
     var body: some View {
+        let doc = doc
         let layouts = Dictionary(
             doc.graph.nodes.map { ($0.id, NodeLayout($0, spec: catalog.nodes[$0.type])) },
             uniquingKeysWith: { a, _ in a })
@@ -198,17 +253,54 @@ struct NodeCanvas: View {
                 for node in doc.graph.nodes {
                     guard let layout = layouts[node.id], layout.bounds.intersects(seen) else { continue }
                     draw(node, layout, role: roles[node.id], in: context)
+                    if selection.contains(node.id) {
+                        context.stroke(
+                            Path(roundedRect: layout.bounds.insetBy(dx: -3, dy: -3), cornerRadius: 10),
+                            with: .color(NodeColors.selection), lineWidth: 2 / shown.scale)
+                    }
                 }
             }
             .contentShape(Rectangle())
+            // A drag on a node moves it (with the selection); on the background it moves the view.
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { value in
-                        let start = panStart ?? shown
-                        panStart = start
-                        viewport = start.panned(by: value.translation)
+                        if panStart == nil, nodeDrag == nil {
+                            let start = shown.toCanvas(value.startLocation)
+                            if let hit = NodeEditing.node(at: start, in: doc.graph.nodes, layouts: layouts) {
+                                if !selection.contains(hit) {
+                                    selection = NodeEditing.select(hit, in: selection, extend: extendsSelection)
+                                }
+                                // Hold the view still while the graph's bounds change.
+                                viewport = shown
+                                nodeDrag = NodeDrag(nodes: NodeEditing.dragged(hit, selection: selection))
+                            } else {
+                                panStart = shown
+                            }
+                        }
+                        if nodeDrag != nil {
+                            nodeDrag?.delta = CGSize(
+                                width: value.translation.width / shown.scale,
+                                height: value.translation.height / shown.scale)
+                        } else if let start = panStart {
+                            viewport = start.panned(by: value.translation)
+                        }
                     }
-                    .onEnded { _ in panStart = nil }
+                    .onEnded { _ in
+                        if let drag = nodeDrag, drag.delta != .zero {
+                            onMove(NodeEditing.moved(state.doc, drag.nodes, by: drag.delta))
+                        }
+                        nodeDrag = nil
+                        panStart = nil
+                    }
+            )
+            .simultaneousGesture(
+                SpatialTapGesture()
+                    .onEnded { tap in
+                        let hit = NodeEditing.node(
+                            at: shown.toCanvas(tap.location), in: doc.graph.nodes, layouts: layouts)
+                        selection = NodeEditing.select(hit, in: selection, extend: extendsSelection)
+                    }
             )
             .simultaneousGesture(
                 MagnifyGesture()
@@ -398,6 +490,7 @@ enum NodeColors {
     static let label = Color(hex: 0xaaaaaa)
     static let widget = Color(hex: 0x222222)
     static let error = Color(hex: 0xFF6E6E)
+    static let selection = Color(hex: 0xFFFFFF)
 
     /// ComfyUI's colours for link types.
     static func type(_ type: String) -> Color {

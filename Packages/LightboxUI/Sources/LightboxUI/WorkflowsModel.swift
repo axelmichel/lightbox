@@ -13,6 +13,8 @@ public final class WorkflowsModel {
     public var problem: String?
     /// Read once, then kept: the graph view asks on every change of the form.
     @ObservationIgnored private var documents: [UUID: WorkflowDocument] = [:]
+    /// Counts changes to the documents, so views that read one update.
+    private var revision = 0
 
     init(store: WorkflowStore) {
         self.store = store
@@ -44,6 +46,7 @@ public final class WorkflowsModel {
     func entry(_ id: UUID) -> WorkflowEntry? { entries.first { $0.id == id } }
 
     func document(_ id: UUID) -> WorkflowDocument? {
+        _ = revision
         if let doc = documents[id] { return doc }
         guard let data = try? store.load(id), let doc = try? WorkflowDocument(data: data) else { return nil }
         documents[id] = doc
@@ -67,6 +70,40 @@ public final class WorkflowsModel {
     }
 
     func uniqueName(_ base: String) -> String { store.uniqueName(base) }
+
+    /// Keep `doc` as workflow `id` (nodes moved in the graph view), with an
+    /// undo step called `name`.
+    func change(_ id: UUID, to doc: WorkflowDocument, _ name: String, undo: UndoManager?) {
+        let before = document(id)
+        guard before != doc, write(id, doc) else { return }
+        register(id, restoring: before, name, undo)
+    }
+
+    private func register(_ id: UUID, restoring old: WorkflowDocument?, _ name: String, _ undo: UndoManager?) {
+        guard let old else { return }
+        undo?.registerUndo(withTarget: self) { model in
+            let current = model.document(id)
+            // Gone in the meantime (deleted): nothing to undo.
+            guard model.write(id, old) else { return }
+            model.register(id, restoring: current, name, undo)
+        }
+        undo?.setActionName(name)
+    }
+
+    @discardableResult
+    private func write(_ id: UUID, _ doc: WorkflowDocument) -> Bool {
+        guard let entry = entry(id) else { return false }
+        do {
+            try store.save(entry, data: doc.data())
+            documents[id] = doc
+            revision += 1
+            reload()
+            return true
+        } catch {
+            problem = "Could not save the workflow: \(error.localizedDescription)"
+            return false
+        }
+    }
 
     func rename(_ id: UUID, to name: String) {
         do {
