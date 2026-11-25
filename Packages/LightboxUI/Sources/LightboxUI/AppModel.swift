@@ -455,6 +455,10 @@ public final class AppModel {
     static func describe(_ error: any Error) -> String {
         if let e = error as? ComfyError { return e.description }
         if let e = error as? GalleryError { return e.description }
+        // Generating through the node graph.
+        if let e = error as? GraphSend.Problem { return e.message }
+        if let e = error as? WorkflowRunError { return e.description }
+        if let e = error as? WorkflowDocumentError { return e.description }
         if let e = error as? URLError {
             switch e.code {
             case .cannotConnectToHost, .cannotFindHost, .timedOut:

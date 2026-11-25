@@ -52,6 +52,44 @@ public enum WorkflowRunError: Error, Equatable, Sendable, CustomStringConvertibl
 }
 
 extension ComfyClient {
+    /// Run any graph and report it as `generate` reports a request: a stage
+    /// per node type, progress and previews, and at the end the pictures of
+    /// every output node.
+    public func generate(_ graph: WorkflowGraph, workflow: JSONValue? = nil) -> AsyncThrowingStream<
+        GenerationEvent, Error
+    > {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    var images: [GeneratedImage] = []
+                    var started = false
+                    for try await event in run(graph, workflow: workflow) {
+                        switch event {
+                        case .queued(let id): continuation.yield(.queued(promptID: id))
+                        case .executing(let node):
+                            if !started {
+                                started = true
+                                continuation.yield(.started)
+                            }
+                            if let type = graph.nodes[node]?.classType { continuation.yield(.stage(type)) }
+                        case .cached: break
+                        case .progress(_, let step, let total): continuation.yield(.progress(step: step, total: total))
+                        case .preview(let data): continuation.yield(.preview(data))
+                        case .executed(_, let refs):
+                            for ref in refs { images.append(GeneratedImage(data: try await image(ref), ref: ref)) }
+                        case .finished: continuation.yield(.finished(images))
+                        case .cancelled: continuation.yield(.cancelled)
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     /// Queue `graph` and follow it. `workflow` (the UI-format file) is
     /// stored with the prompt, as ComfyUI's frontend does, so Save Image
     /// writes it into the picture. Cancelling the consuming task cancels the

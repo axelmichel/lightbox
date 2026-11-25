@@ -10,6 +10,7 @@ import SwiftUI
 /// the gallery is.
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
+    @AppStorage(GenerationModel.throughGraphKey) private var throughGraph = false
 
     var body: some View {
         @Bindable var app = app
@@ -97,6 +98,18 @@ struct SettingsView: View {
             } footer: {
                 Text(
                     "Pictures may show children; sexual content involving minors is always refused, whatever the rating."
+                )
+            }
+
+            Section {
+                Toggle("Generate through the node graph", isOn: $throughGraph)
+            } header: {
+                Text("Node Graph")
+            } footer: {
+                Text(
+                    "Sends the graph the Nodes view shows, with a saved workflow's nodes, instead of building it "
+                        + "straight from the preset. Every text in it is checked like a prompt. The pictures should "
+                        + "be the same either way."
                 )
             }
 

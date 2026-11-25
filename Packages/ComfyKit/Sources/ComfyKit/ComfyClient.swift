@@ -175,12 +175,10 @@ public struct ComfyClient: Sendable {
         }
     }
 
-    private func run(
-        _ request: GenerationRequest, catalog: ComfyCatalog,
-        _ out: AsyncThrowingStream<GenerationEvent, Error>.Continuation
-    ) async throws {
+    /// `request` with its pictures (guides, references, inpainting) in
+    /// ComfyUI's input folder, and their names set.
+    public func uploadPictures(_ request: GenerationRequest) async throws -> GenerationRequest {
         var request = request
-        if !request.guides.isEmpty || request.inpaint != nil || !request.references.isEmpty { out.yield(.uploading) }
         for i in request.references.indices {
             let reference = request.references[i]
             request.references[i].imageName = try await upload(
@@ -194,6 +192,15 @@ public struct ComfyClient: Sendable {
             let guide = request.guides[i]
             request.guides[i].imageName = try await upload(image: guide.image, filename: guide.filename)
         }
+        return request
+    }
+
+    private func run(
+        _ request: GenerationRequest, catalog: ComfyCatalog,
+        _ out: AsyncThrowingStream<GenerationEvent, Error>.Continuation
+    ) async throws {
+        if request.hasPictures { out.yield(.uploading) }
+        let request = try await uploadPictures(request)
 
         // Listen before queueing, so no event of this prompt is missed.
         let clientID = UUID().uuidString

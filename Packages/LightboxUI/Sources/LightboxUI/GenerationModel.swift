@@ -162,7 +162,13 @@ public final class GenerationModel {
         let (recipe, guideImages) = (prepared.recipe, prepared.guideImages)
         totalSteps = prepared.preset.steps
         let gallery = app.gallery
-        run(prepared.request, client: client, catalog: app.catalog) { images in
+        // Through the graph (with the shown workflow's layout and nodes), or
+        // as always, straight from the request.
+        let events =
+            UserDefaults.standard.bool(forKey: Self.throughGraphKey)
+            ? graphEvents(prepared.request, workflow: shownWorkflow(app, preset: preset), client: client, app)
+            : client.generate(prepared.request, catalog: app.catalog)
+        run(events) { images in
             gallery.add(
                 images.enumerated().map { index, image in
                     var own = recipe
@@ -423,14 +429,46 @@ public final class GenerationModel {
         let request = preset.request(prompt, seed: 20_261_125)
         totalSteps = preset.steps
         renderingPreview = modifier.id
-        run(request, client: client, catalog: app.catalog) { [weak app] images in
+        run(client.generate(request, catalog: app.catalog)) { [weak app] images in
             if let first = images.first { app?.setPreview(modifier.id, image: first.data) }
         }
     }
 
+    /// Settings: generate through the node graph (`GraphSend`).
+    static let throughGraphKey = "generateThroughGraph"
+
+    /// Generating through the graph: the pictures uploaded, the graph built
+    /// and brought into the shown workflow's layout, checked by
+    /// `GraphSend`, then run.
+    private func graphEvents(
+        _ request: GenerationRequest, workflow: WorkflowEntry?, client: ComfyClient, _ app: AppModel
+    ) -> AsyncThrowingStream<GenerationEvent, Error> {
+        let catalog = app.catalog
+        let rating = app.library.rating
+        let saved = workflow.flatMap { app.workflows.document($0.id) }
+        return AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    if request.hasPictures { continuation.yield(.uploading) }
+                    let uploaded = try await client.uploadPictures(request)
+                    let standard = try WorkflowDocument(
+                        WorkflowBuilder.build(uploaded, catalog: catalog), catalog: catalog)
+                    let doc = saved?.reconciled(with: standard) ?? standard
+                    let compiled = try GraphSend.prepare(doc, catalog: catalog, rating: rating).get()
+                    for try await event in client.generate(compiled.graph, workflow: doc.json()) {
+                        continuation.yield(event)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     private func run(
-        _ request: GenerationRequest, client: ComfyClient, catalog: ComfyCatalog,
-        finished: @escaping ([GeneratedImage]) -> Void
+        _ events: AsyncThrowingStream<GenerationEvent, Error>, finished: @escaping ([GeneratedImage]) -> Void
     ) {
         preview = nil
         stage = ""
@@ -439,7 +477,7 @@ public final class GenerationModel {
         notice = nil
         task = Task {
             do {
-                for try await event in client.generate(request, catalog: catalog) {
+                for try await event in events {
                     handle(event, finished: finished)
                 }
                 if isRunning { state = .idle }

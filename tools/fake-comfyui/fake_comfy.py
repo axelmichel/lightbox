@@ -58,7 +58,9 @@ async def run(pid, cid, graph):
     out = next(k for k, n in graph.items() if n["class_type"] in ("PreviewImage", "SaveImage"))
     batch = next((n["inputs"]["batch_size"] for n in graph.values() if n["class_type"] == "EmptyLatentImage"), 1)
     images = [{"filename": f"ComfyUI_temp_{pid[:6]}_{i}.png", "subfolder": "", "type": "temp"} for i in range(batch)]
-    history[pid] = {"outputs": {out: {"images": images}}, "status": {"status_str": "success", "completed": True}}
+    # As ComfyUI does: the queued prompt is in the history too.
+    history[pid] = {"prompt": [1, pid, graph, {}, [out]], "outputs": {out: {"images": images}},
+                    "status": {"status_str": "success", "completed": True}}
     await send(cid, "executed", {"node": out, "output": {"images": images}, "prompt_id": pid})
     await send(cid, "execution_success", {"prompt_id": pid})
     await send(cid, "executing", {"node": None, "prompt_id": pid})

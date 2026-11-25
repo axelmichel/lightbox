@@ -303,6 +303,9 @@ public struct SplitModelRequest: Equatable, Sendable {
 /// One generation, in ComfyUI terms: text to image, or with `inpaint`
 /// part of a picture painted again.
 public struct GenerationRequest: Equatable, Sendable {
+    /// It has pictures to upload first.
+    public var hasPictures: Bool { !guides.isEmpty || inpaint != nil || !references.isEmpty }
+
     /// Ignored when `split` is set.
     public var checkpoint: String
     public var vae: String?

@@ -31,7 +31,7 @@ A Swift/SwiftUI app for Mac and iPad that generates pictures with a ComfyUI serv
 - Pictures of children are allowed. Sexualizing minors is never allowed.
 - Every prompt sent to ComfyUI goes through `compose()`, which calls `ContentGuard.check`. Don't add a code path that builds a `GenerationRequest` from user text without going through it. Reusing a recipe goes through `compose()` again. The editor's *Edit with Model*, *Redraw Area* and *Edit with Instruction* (`ComposeDocument`) do too.
 - Changes to the term lists need tests in both directions: a minor plus a sexual term is blocked, and normal scenes with kids pass.
-- Anything that queues a node-editor workflow (`WorkflowCompiler` output) must put every text value through `ContentGuard.check` (positive, or negative if it only reaches `negative` inputs; `CompiledWorkflow.texts`) with the LoRA names, and add the forced negatives (`addNegative`).
+- Anything that queues a node-editor workflow (`WorkflowCompiler` output) must put every text value through `ContentGuard.check` (positive, or negative if it only reaches `negative` inputs; `CompiledWorkflow.texts`) with the LoRA names, and add the forced negatives (`addNegative`). `LightboxUI/GraphSend.prepare` does all of this; queue a graph from the node editor only through it (`GraphSendTests`, and `graphRunsOnTheServer` against the fake server).
 - Style modifiers (`StyleModifier.swift`) are added to the prompt by `compose()` and checked by the guard like the rest of it. Built-ins have fixed UUIDs; don't renumber them.
 - The prompt helper (`Enhance.swift`, `Ollama.swift`) only writes a suggestion. The user puts it into the prompt field, and it is composed and guarded from there. Never send Ollama output to ComfyUI directly.
 
