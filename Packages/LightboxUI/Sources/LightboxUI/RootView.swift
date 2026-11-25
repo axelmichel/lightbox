@@ -7,6 +7,11 @@ public struct LightboxScenes: Scene {
 
     public init(app: AppModel) {
         self.app = app
+        #if os(macOS)
+            // Thin scrollbars that show while scrolling, even when the system
+            // setting says "Always". Set for Lightbox alone, before any window.
+            UserDefaults.standard.set("WhenScrolling", forKey: "AppleShowScrollBars")
+        #endif
     }
 
     public var body: some Scene {
