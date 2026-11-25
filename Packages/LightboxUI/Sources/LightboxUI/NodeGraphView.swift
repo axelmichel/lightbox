@@ -1,32 +1,85 @@
 import ComfyKit
+import LightboxCore
 import SwiftUI
 
-/// The graph the Generate form would send, drawn as ComfyUI shows it. It
+/// The graph the Generate form would send, drawn as ComfyUI shows it: the
+/// standard one, or a saved workflow brought up to date with the form. It
 /// follows every change in the form; nothing can be changed here yet.
 struct NodeGraphView: View {
+    /// A name being typed for a workflow.
+    private enum Naming: Identifiable {
+        case new
+        case rename(WorkflowEntry)
+
+        var id: String {
+            switch self {
+            case .new: "new"
+            case .rename(let e): e.id.uuidString
+            }
+        }
+    }
+
     @Environment(AppModel.self) private var app
     @AppStorage(PanelKeys.generate) private var showGenerate = true
     @AppStorage(PanelKeys.nodes) private var showNodes = false
+    @State private var naming: Naming?
+    @State private var name = ""
+    @State private var deleting: WorkflowEntry?
 
     var body: some View {
+        let graph = app.generation.graph(app)
+        let state = try? graph.get()
         Group {
-            switch app.generation.graph(app) {
+            switch graph {
             case .success(let state):
-                NodeCanvas(state: state, catalog: app.catalog)
+                // A new view for another workflow: it starts fitted.
+                NodeCanvas(state: state, catalog: app.catalog).id(state.workflow?.id)
             case .failure(let problem):
                 ContentUnavailableView(
                     "No Graph", systemImage: "point.3.connected.trianglepath.dotted",
                     description: Text(problem.message))
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) { header }
+        .safeAreaInset(edge: .top, spacing: 0) { header(state) }
+        .alert(
+            namingTitle, isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } }),
+            presenting: naming
+        ) { naming in
+            TextField("Name", text: $name)
+            Button(namingAction(naming)) { finish(naming, state: state) }
+                .keyboardShortcut(.defaultAction)
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "Delete “\(deleting?.name ?? "")”?",
+            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+            presenting: deleting
+        ) { entry in
+            Button("Delete Workflow", role: .destructive) {
+                app.workflows.delete(entry.id)
+                if app.generation.workflowID == entry.id { app.generation.workflowID = nil }
+            }
+        } message: { _ in
+            Text("The graph goes back to the preset's standard one.")
+        }
+        .alert(
+            "Workflows",
+            isPresented: Binding(
+                get: { app.workflows.problem != nil }, set: { if !$0 { app.workflows.problem = nil } })
+        ) {
+            Button("OK") { app.workflows.problem = nil }
+        } message: {
+            Text(app.workflows.problem ?? "")
+        }
     }
 
-    /// Like the gallery's bar, with the way back to it.
-    private var header: some View {
+    /// Like the gallery's bar, with the workflow shown and the way back to the gallery.
+    private func header(_ state: GenerationModel.GraphState?) -> some View {
         HStack(spacing: 10) {
             Text("Nodes").font(.headline)
-            Text("What Generate sends").foregroundStyle(.secondary)
+            if let preset = app.generation.preset(in: app.library) {
+                workflowMenu(preset, shown: state?.workflow, canSave: state != nil)
+            }
             Spacer()
             Button("Show the Gallery", systemImage: "photo.on.rectangle.angled") { showNodes = false }
                 .labelStyle(.titleAndIcon)
@@ -41,6 +94,73 @@ struct NodeGraphView: View {
         .frame(height: PanelHeader.height)
         .background(.bar)
         .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private func workflowMenu(_ preset: GenerationPreset, shown: WorkflowEntry?, canSave: Bool) -> some View {
+        let gen = app.generation
+        let own = app.workflows.entries(for: preset.id)
+        let loose = app.workflows.withoutPreset(app.library.presets)
+        return Menu {
+            Picker("Workflow", selection: Binding(get: { shown?.id }, set: { gen.workflowID = $0 })) {
+                Text("Standard").tag(UUID?.none)
+                if !own.isEmpty {
+                    Section(preset.name) {
+                        ForEach(own) { Text($0.name).tag(Optional($0.id)) }
+                    }
+                }
+                if !loose.isEmpty {
+                    Section("Without a Preset") {
+                        ForEach(loose) { Text($0.name).tag(Optional($0.id)) }
+                    }
+                }
+            }
+            .pickerStyle(.inline)
+            Divider()
+            Button("Save as Workflow…", systemImage: "square.and.arrow.down") {
+                name = app.workflows.uniqueName(preset.name)
+                naming = .new
+            }
+            .disabled(!canSave)
+            if let shown {
+                Button("Rename “\(shown.name)”…", systemImage: "pencil") {
+                    name = shown.name
+                    naming = .rename(shown)
+                }
+                Button("Delete “\(shown.name)”…", systemImage: "trash", role: .destructive) { deleting = shown }
+            }
+        } label: {
+            Label(shown?.name ?? "Standard", systemImage: "point.3.connected.trianglepath.dotted")
+                .labelStyle(.titleAndIcon)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("The workflow shown: the preset's standard graph, or one saved with its layout")
+    }
+
+    private var namingTitle: String {
+        switch naming {
+        case .rename?: "Rename the Workflow"
+        default: "Save as Workflow"
+        }
+    }
+
+    private func namingAction(_ naming: Naming) -> String {
+        switch naming {
+        case .new: "Save"
+        case .rename: "Rename"
+        }
+    }
+
+    private func finish(_ naming: Naming, state: GenerationModel.GraphState?) {
+        switch naming {
+        case .new:
+            guard let state, let preset = app.generation.preset(in: app.library),
+                let entry = app.workflows.save(state.doc, name: name, presetID: preset.id)
+            else { return }
+            app.generation.workflowID = entry.id
+        case .rename(let entry):
+            app.workflows.rename(entry.id, to: name)
+        }
     }
 }
 

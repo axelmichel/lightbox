@@ -35,6 +35,9 @@ public final class GenerationModel {
     }
 
     public var presetID: UUID?
+    /// The saved workflow the node graph shows; `nil`: the standard graph,
+    /// made from the preset each time.
+    public var workflowID: UUID?
     public var prompt = ""
     public var negative = ""
     /// The camera, light, film or comic style picked per category. Only
@@ -251,6 +254,8 @@ public final class GenerationModel {
     /// What the node graph shows.
     struct GraphState {
         var doc: WorkflowDocument
+        /// The saved workflow shown, brought up to date with the form.
+        var workflow: WorkflowEntry?
         /// Why the guard refused the prompt; the prompt nodes are empty then.
         var refusal: String?
         /// No seed typed: each run picks one, the graph shows 0.
@@ -263,10 +268,25 @@ public final class GenerationModel {
         let typed = Int(seedText.trimmingCharacters(in: .whitespaces))
         return prepare(preset, seed: typed ?? 0, app, showingRefused: true).flatMap { prepared in
             let built = WorkflowBuilder.build(prepared.request, catalog: app.catalog)
+            let workflow = shownWorkflow(app, preset: preset)
             return Result { () throws(WorkflowDocumentError) in try WorkflowDocument(built, catalog: app.catalog) }
-                .map { GraphState(doc: $0, refusal: prepared.refusal, randomSeed: typed == nil) }
+                .map { standard in
+                    // A saved workflow keeps its layout and takes the form's values.
+                    let doc = workflow.flatMap { app.workflows.document($0.id) }?.reconciled(with: standard)
+                    return GraphState(
+                        doc: doc ?? standard, workflow: doc == nil ? nil : workflow, refusal: prepared.refusal,
+                        randomSeed: typed == nil)
+                }
                 .mapError { Problem(message: $0.description) }
         }
+    }
+
+    /// The chosen workflow, if it is the preset's or has no preset.
+    func shownWorkflow(_ app: AppModel, preset: GenerationPreset) -> WorkflowEntry? {
+        guard let entry = workflowID.flatMap(app.workflows.entry) else { return nil }
+        let presets = Set(app.library.presets.map(\.id))
+        let fits = entry.presetID == preset.id || entry.presetID.map { !presets.contains($0) } ?? true
+        return fits ? entry : nil
     }
 
     /// Make a small sample picture with `modifier` and keep it as the

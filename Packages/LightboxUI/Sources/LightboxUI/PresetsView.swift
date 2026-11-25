@@ -10,6 +10,8 @@ struct PresetsView: View {
     @State private var selection: UUID?
     @State private var importing = false
     @State private var importProblem: String?
+    /// A preset with workflows, asked about before it is deleted.
+    @State private var deleting: GenerationPreset?
 
     var body: some View {
         @Bindable var app = app
@@ -86,6 +88,21 @@ struct PresetsView: View {
                 importProblem = "Could not open the file: \(error.localizedDescription)"
             }
         }
+        .confirmationDialog(
+            "Delete “\(deleting?.name ?? "")”?",
+            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting
+        ) { preset in
+            Button("Delete Preset and Workflows", role: .destructive) { remove(preset.id, keepWorkflows: false) }
+                .keyboardShortcut(.defaultAction)
+            Button("Keep the Workflows") { remove(preset.id, keepWorkflows: true) }
+            Button("Cancel", role: .cancel) {}
+        } message: { preset in
+            let count = app.workflows.entries(for: preset.id).count
+            Text(
+                count == 1
+                    ? "It has a workflow. Kept, it stays in the node graph's list without a preset."
+                    : "It has \(count) workflows. Kept, they stay in the node graph's list without a preset.")
+        }
         .alert(
             "Import Workflow",
             isPresented: Binding(get: { importProblem != nil }, set: { if !$0 { importProblem = nil } })
@@ -131,7 +148,17 @@ struct PresetsView: View {
         selection = copy.id
     }
 
+    /// Asks first if the preset has workflows.
     private func delete(_ id: UUID) {
+        if let preset = app.library.presets.first(where: { $0.id == id }), !app.workflows.entries(for: id).isEmpty {
+            deleting = preset
+        } else {
+            remove(id, keepWorkflows: false)
+        }
+    }
+
+    private func remove(_ id: UUID, keepWorkflows: Bool) {
+        app.workflows.presetDeleted(id, keepWorkflows: keepWorkflows)
         app.library.presets.removeAll { $0.id == id }
         if selection == id { selection = app.library.presets.first?.id }
     }
