@@ -188,3 +188,67 @@ private func requests() throws -> [(name: String, request: GenerationRequest)] {
         #expect(NodeRole(bad) == nil, "\(bad)")
     }
 }
+
+/// Projected and compiled again, a request gives the graph `txt2img`
+/// sends, so both ways of sending stay the same. The document holds a
+/// value for every widget, so the compiled graph also has the optional
+/// inputs the builder leaves out, at the server's default.
+@Test func projectionCompilesToTheBuiltGraph() throws {
+    let c = try kritaCatalog()
+    for (name, r) in try requests() {
+        let built = WorkflowBuilder.build(r, catalog: c)
+        let compiled = WorkflowCompiler.compile(try WorkflowDocument(built, catalog: c), catalog: c)
+        #expect(compiled.problems.isEmpty, "\(name): \(compiled.problems)")
+        #expect(Set(compiled.graph.nodes.keys) == Set(built.graph.nodes.keys), "\(name)")
+        for (id, node) in built.graph.nodes {
+            let out = try #require(compiled.graph.nodes[id], "\(name) \(id)")
+            #expect(out.classType == node.classType, "\(name) \(id)")
+            for (input, value) in out.inputs {
+                if let sent = node.inputs[input] {
+                    #expect(value == sent, "\(name) \(id) \(node.classType).\(input)")
+                } else {
+                    let spec = try #require(c.nodes[node.classType])
+                    let declared = try #require(spec.inputs[input], "\(name) \(node.classType).\(input)")
+                    #expect(spec.optional.contains(input), "\(name) \(node.classType).\(input) is required")
+                    #expect(
+                        value == WorkflowCompiler.Compiler.input(WidgetLayout.defaultValue(declared), declared),
+                        "\(name) \(node.classType).\(input)")
+                }
+            }
+            #expect(Set(node.inputs.keys).isSubset(of: out.inputs.keys), "\(name) \(id) \(node.classType)")
+        }
+    }
+}
+
+@Test func projectionKeepsRolesThroughASave() throws {
+    let c = try kritaCatalog()
+    for (name, r) in try requests() {
+        let built = WorkflowBuilder.build(r, catalog: c)
+        let doc = try WorkflowDocument(built, catalog: c)
+        let expected = Dictionary(uniqueKeysWithValues: built.roles.map { (Int($0.key)!, $0.value) })
+        #expect(doc.roles == expected, "\(name)")
+        let loaded = try WorkflowDocument(data: doc.data())
+        #expect(loaded.roles == expected, "\(name)")
+        #expect(
+            WorkflowCompiler.compile(loaded, catalog: c).graph == WorkflowCompiler.compile(doc, catalog: c).graph,
+            "\(name)")
+    }
+}
+
+@Test func projectionLayoutIsTheSameEachTime() throws {
+    let c = try kritaCatalog()
+    for (name, r) in try requests() {
+        let built = WorkflowBuilder.build(r, catalog: c)
+        let a = try WorkflowDocument(built, catalog: c)
+        let b = try WorkflowDocument(WorkflowBuilder.build(r, catalog: c), catalog: c)
+        #expect(a == b, "\(name)")
+        // Loaders left of the sampler, the output furthest right.
+        func x(_ role: NodeRole) throws -> Double {
+            let id = try #require(built.ids(role).first.flatMap { Int($0) }, "\(name): \(role)")
+            return try #require(a.graph.node(id)).position.x
+        }
+        let loader = r.split == nil ? NodeRole(.checkpoint) : NodeRole(.diffusionModel)
+        #expect(try x(loader) < x(NodeRole(.sampler)), "\(name)")
+        #expect(try x(NodeRole(.sampler)) < x(NodeRole(.output)), "\(name)")
+    }
+}
