@@ -262,8 +262,9 @@ Workflows · Live-Vorschau am Knoten · iPad-Touch.
 
 ## 8. Offene Detailfragen (werden vor dem jeweiligen Schritt geklärt)
 
-- **F1 (vor 5.2)** Soll das Rezept den ganzen Graphen einbetten (Bild exakt reproduzierbar, größere Dateien) oder
-  nur auf den Workflow verweisen (klein, aber spätere Änderungen am Workflow verfälschen die Herkunft)?
+- **F1 (vor 5.2), entschieden:** Wählbar in den Einstellungen. Standard: Das Rezept verweist nur auf den Workflow
+  (klein). Eingeschaltet „ganzen Graphen speichern“: Der gesendete Graph wird mit dem Bild gespeichert (exakt
+  reproduzierbar, größere Dateien).
 - **F2 (vor 3.2), entschieden:** Hat ein Preset Workflows, fragt das Löschen nach. Standard ist „Preset und
   Workflows löschen“; die Alternative „Workflows behalten“ lässt sie ohne Preset stehen.
 - **F3 (vor 4.3), entschieden:** Die Workflow-Auswahl gilt pro Preset und übersteht einen Neustart; beim
