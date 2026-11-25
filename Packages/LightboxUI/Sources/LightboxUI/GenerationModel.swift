@@ -75,6 +75,8 @@ public final class GenerationModel {
     public private(set) var promptBeforeSuggestion: String?
 
     private var task: Task<Void, Never>?
+    /// What the pictures of the running generation record of their workflow.
+    private var runRecord: WorkflowRun?
 
     public var isRunning: Bool {
         if case .running = state { return true }
@@ -162,19 +164,22 @@ public final class GenerationModel {
         let (recipe, guideImages) = (prepared.recipe, prepared.guideImages)
         totalSteps = prepared.preset.steps
         let gallery = app.gallery
+        let workflow = shownWorkflow(app, preset: preset)
+        // By default a picture names its workflow; the graph path may keep the whole graph (`graphEvents`).
+        runRecord = workflow.map { WorkflowRun(workflowID: $0.id, name: $0.name, server: app.serverAddress) }
         // Through the graph (with the shown workflow's layout and nodes), or
         // as always, straight from the request.
         let events =
             UserDefaults.standard.bool(forKey: Self.throughGraphKey)
-            ? graphEvents(prepared.request, workflow: shownWorkflow(app, preset: preset), client: client, app)
+            ? graphEvents(prepared.request, workflow: workflow, client: client, app)
             : client.generate(prepared.request, catalog: app.catalog)
-        run(events) { images in
+        run(events) { [weak self] images in
             gallery.add(
                 images.enumerated().map { index, image in
                     var own = recipe
                     own.batchIndex = index
                     return (image.data, own)
-                }, guides: guideImages)
+                }, guides: guideImages, workflow: self?.runRecord)
         }
     }
 
@@ -436,6 +441,8 @@ public final class GenerationModel {
 
     /// Settings: generate through the node graph (`GraphSend`).
     static let throughGraphKey = "generateThroughGraph"
+    /// Settings: keep the graph sent with each picture, not only the workflow's name.
+    static let fullGraphKey = "saveFullGraphWithPictures"
 
     /// Generating through the graph: the pictures uploaded, the graph built
     /// and brought into the shown workflow's layout, checked by
@@ -455,6 +462,13 @@ public final class GenerationModel {
                         WorkflowBuilder.build(uploaded, catalog: catalog), catalog: catalog)
                     let doc = saved?.reconciled(with: standard) ?? standard
                     let compiled = try GraphSend.prepare(doc, catalog: catalog, rating: rating).get()
+                    if UserDefaults.standard.bool(forKey: Self.fullGraphKey) {
+                        let file = try app.gallery.store.writeWorkflowRun(GraphSend.runFile(doc, compiled.graph))
+                        let output = doc.roles.first { $0.value == NodeRole(.output) }.map { String($0.key) }
+                        runRecord = WorkflowRun(
+                            workflowID: workflow?.id, name: workflow?.name ?? "Standard graph", file: file,
+                            node: output, server: app.serverAddress)
+                    }
                     for try await event in client.generate(compiled.graph, workflow: doc.json()) {
                         continuation.yield(event)
                     }

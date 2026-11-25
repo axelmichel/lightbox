@@ -109,3 +109,14 @@ func graphRunsOnTheServer() async throws {
     let texts = sent.values.compactMap { $0["inputs"]?["text"]?.string }
     #expect(texts.contains { $0.contains(ContentGuard.minorNegatives[0]) })
 }
+
+@Test func theRunFileHoldsBothFormats() throws {
+    let c = try catalog()
+    let doc = try graph(request("a lighthouse"), c)
+    let compiled = try GraphSend.prepare(doc, catalog: c, rating: .mature).get()
+    let file = try #require(JSONValue.parse(try GraphSend.runFile(doc, compiled.graph)))
+    // The UI format, as ComfyUI opens it, and the API format as sent.
+    #expect(file["workflow"]?["nodes"]?.array?.count == doc.graph.nodes.count)
+    #expect(file["prompt"]?.object?.count == compiled.graph.nodes.count)
+    #expect(try WorkflowDocument(json: #require(file["workflow"])).roles == doc.roles)
+}

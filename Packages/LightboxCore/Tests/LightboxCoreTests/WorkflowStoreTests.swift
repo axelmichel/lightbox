@@ -139,3 +139,23 @@ private let png = Data(
     let index = try JSONDecoder.gallery.decode(GalleryIndex.self, from: Data(json.utf8))
     #expect(index.items.isEmpty)
 }
+
+@Test func picturesCanNameTheirWorkflowWithoutKeepingIt() throws {
+    let root = tempRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = GalleryStore(root: root)
+    let recipe = GalleryStore.recipe(
+        fromPrompt: Data("{}".utf8), name: "Foxes", width: 4, height: 2, rating: .allAges,
+        sent: ComposedPrompt(positive: "a fox", negative: "", loras: []))
+    let pointer = WorkflowRun(workflowID: UUID(), name: "Foxes")
+    var index = GalleryIndex()
+    index.insert([try store.write(png: png, recipe: recipe, folderID: nil, workflow: pointer)])
+    try store.save(index)
+    let loaded = try store.load()
+    #expect(loaded.items.first?.workflow == pointer)
+    #expect(loaded.workflowRunNames.isEmpty)
+    // Entries written with a run file still read.
+    let json = #"{"workflowID":"6F9619FF-8B86-D011-B42D-00C04FC964FF","name":"A","file":"ab.json","node":"9"}"#
+    let old = try JSONDecoder.gallery.decode(WorkflowRun.self, from: Data(json.utf8))
+    #expect((old.file, old.node) == ("ab.json", "9"))
+}

@@ -1,4 +1,5 @@
 import ComfyKit
+import Foundation
 import LightboxCore
 
 /// The one way a graph from the node editor reaches ComfyUI. Whatever the
@@ -34,5 +35,12 @@ enum GraphSend {
                 Problem(message: "The graph needs a negative prompt for the safety terms this picture requires."))
         }
         return .success(compiled)
+    }
+
+    /// The graph as run, for the gallery's `workflow-runs/`:
+    /// `{"workflow": <UI format>, "prompt": <API format>}`.
+    static func runFile(_ doc: WorkflowDocument, _ graph: WorkflowGraph) throws -> Data {
+        let prompt = JSONValue.parse(try graph.jsonData()) ?? .object([:])
+        return try JSONValue.object(["workflow": doc.json(), "prompt": prompt]).data()
     }
 }

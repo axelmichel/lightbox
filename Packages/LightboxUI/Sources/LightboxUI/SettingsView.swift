@@ -11,6 +11,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppModel.self) private var app
     @AppStorage(GenerationModel.throughGraphKey) private var throughGraph = false
+    @AppStorage(GenerationModel.fullGraphKey) private var fullGraph = false
 
     var body: some View {
         @Bindable var app = app
@@ -103,13 +104,16 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Generate through the node graph", isOn: $throughGraph)
+                Toggle("Save the full graph with each picture", isOn: $fullGraph)
+                    .disabled(!throughGraph)
             } header: {
                 Text("Node Graph")
             } footer: {
                 Text(
                     "Sends the graph the Nodes view shows, with a saved workflow's nodes, instead of building it "
                         + "straight from the preset. Every text in it is checked like a prompt. The pictures should "
-                        + "be the same either way."
+                        + "be the same either way. A picture names the workflow it was made with; with the full "
+                        + "graph saved it can be made again exactly, even after the workflow changed (larger gallery)."
                 )
             }
 

@@ -109,12 +109,15 @@ public final class GalleryModel {
 
     /// Store new pictures in the folder that is shown, with the guide
     /// pictures their recipes use.
-    func add(_ pictures: [(png: Data, recipe: GenerationRecipe)], guides: [String: Data] = [:]) {
+    func add(
+        _ pictures: [(png: Data, recipe: GenerationRecipe)], guides: [String: Data] = [:], workflow: WorkflowRun? = nil
+    ) {
         var new: [GalleryItem] = []
         for p in pictures {
             do {
                 new.append(
-                    try store.write(png: p.png, recipe: p.recipe, folderID: filter.folderID, guides: guides))
+                    try store.write(
+                        png: p.png, recipe: p.recipe, folderID: filter.folderID, guides: guides, workflow: workflow))
             } catch {
                 problem = "Could not save a picture: \(AppModel.describe(error))"
             }

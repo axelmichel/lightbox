@@ -177,7 +177,7 @@ public struct GalleryIndex: Codable, Hashable, Sendable {
 
     /// Workflow files (in `workflow-runs/`) used by any picture.
     public var workflowRunNames: Set<String> {
-        Set(items.compactMap { $0.workflow?.file })
+        Set(items.compactMap { $0.workflow?.file ?? nil })
     }
 }
 
@@ -186,13 +186,15 @@ public struct WorkflowRun: Codable, Hashable, Sendable {
     /// The workflow in the library it was run from; `nil` if it is gone or was never saved.
     public var workflowID: UUID?
     public var name: String
-    /// The file in `workflow-runs/`: the workflow as run (UI format) and the prompt sent (API format).
-    public var file: String
-    /// The output node the picture came from (API id).
-    public var node: String
+    /// The file in `workflow-runs/`: the workflow as run (UI format) and the
+    /// prompt sent (API format). `nil` when only the workflow is named (the
+    /// default; Settings → Save the full graph with each picture).
+    public var file: String?
+    /// The output node the picture came from (API id), if known.
+    public var node: String?
     public var server: String?
 
-    public init(workflowID: UUID?, name: String, file: String, node: String, server: String? = nil) {
+    public init(workflowID: UUID?, name: String, file: String? = nil, node: String? = nil, server: String? = nil) {
         self.workflowID = workflowID
         self.name = name
         self.file = file

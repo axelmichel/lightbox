@@ -26,6 +26,17 @@ struct RecipeInfoView: View {
                             Badge(text: app.gallery.index.path(of: item.folderID!))
                         }
                     }
+                    if let run = item.workflow {
+                        Label(
+                            run.file == nil ? "Workflow “\(run.name)”" : "Workflow “\(run.name)”, graph saved",
+                            systemImage: "point.3.connected.trianglepath.dotted"
+                        )
+                        .font(.callout).foregroundStyle(.secondary)
+                        .help(
+                            run.file == nil
+                                ? "Made with this node-graph workflow; later changes to it aren't recorded here"
+                                : "The graph sent is kept with the picture")
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
