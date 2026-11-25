@@ -1,0 +1,148 @@
+{
+  "Hyper-XL-8steps-CFG-lora.safetensors": {},
+  "illustrious/Detail_Boost_v1.0.safetensors": {
+    "ss_output_name": "Detail_Boost_v1.0"
+  },
+  "illustrious/Shape Slider - Illustrious_alpha1.0_rank4_noxattn_last.safetensors": {},
+  "illustrious/Toon_illustrious_style.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "Toon_illustrious_style",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"img\": {\"n_repeats\": 5, \"img_count\": 340}}",
+    "ss_output_name": "Toon_illustrious_style",
+    "ss_sd_model_name": "200000.safetensors",
+    "ss_tag_frequency": "{\"img\": {\"1girl\": 225, \"long hair\": 216, \"solo\": 180, \"standing\": 139, \"looking at viewer\": 133, \"brown hair\": 130, \"black hair\": 128, \"s-cartoon\": 122, \"shirt\": 113, \"multiple girls\": 108, \"jewelry\": 104, \"smile\": 95, \"blonde hair\": 95, \"gloves\": 92, \"g-cartoon\": 90, \"short hair\": 88, \"simple background\": 88, \"2girls\": 86, \"closed eyes\": 81, \"walking\": 76, \"earrings\": 72, \"white background\": 72, \"jacket\": 70, \"holding\": 67, \"blue eyes\": 63, \"hat\": 61, \"portrait\": 59, \"bangs\": 59, \"brown eyes\": 59, \"ponytail\": 58, \"full body\": 58, \"pants\": 56, \"facial mark\": 56, \"outdoors\": 52, \"indoors\": 52, \"shorts\": 50, \"upper body\": 49, \"blush\": 47, \"cartoon\": 45, \"hood\": 43, \"open mouth\": 43, \"whisker markings\": 43, \"sitting\": 43, \"day\": 43, \"sky\": 41, \"cloud\": 41, \"multicolored hair\": 40, \"short sleeves\": 40, \"fingerless gloves\": 40, \"white shirt\": 38, \"glasses\": 36, \"1boy\": 36, \"tattoo\": 36, \"tree\": 36, \"water\": 36, \"facepaint\": 34, \"black gloves\": 34, \"headphones\": 32, \"city\": 32, \"room\": 31}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/Toon_style.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "Toon_style",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"img\": {\"n_repeats\": 5, \"img_count\": 991}}",
+    "ss_output_name": "Toon_style",
+    "ss_sd_model_name": "200000.safetensors",
+    "ss_tag_frequency": "{\"img\": {\"1girl\": 835, \"solo\": 775, \"long hair\": 655, \"g-cartoon\": 545, \"looking at viewer\": 526, \"s-cartoon\": 446, \"standing\": 410, \"simple background\": 343, \"brown hair\": 338, \"black hair\": 336, \"shirt\": 329, \"jewelry\": 319, \"smile\": 302, \"walking\": 274, \"upper body\": 233, \"earrings\": 230, \"white background\": 228, \"blonde hair\": 226, \"brown eyes\": 216, \"short hair\": 202, \"holding\": 197, \"bangs\": 197, \"pants\": 187, \"blush\": 185, \"blue eyes\": 182, \"full body\": 180, \"outdoors\": 170, \"gloves\": 170, \"indoors\": 168, \"day\": 146, \"sky\": 144, \"multiple girls\": 142, \"closed eyes\": 139, \"jacket\": 139, \"portrait\": 134, \"cloud\": 132, \"closed mouth\": 132, \"tree\": 125, \"parted lips\": 125, \"black eyes\": 122, \"makeup\": 122, \"2girls\": 120, \"ponytail\": 113, \"hat\": 113, \"sitting\": 113, \"water\": 110, \"facial mark\": 110, \"freckles\": 110, \"long sleeves\": 103, \"open mouth\": 101, \"city\": 101, \"shorts\": 98, \"multicolored hair\": 98, \"white shirt\": 98, \"room\": 94, \"whisker markings\": 86, \"collarbone\": 86, \"necklace\": 86, \"window\": 84, \"green eyes\": 84}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/Hero Character - XL IL V1.0.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "Hero_Character_Pony",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"img\": {\"n_repeats\": 4, \"img_count\": 180}}",
+    "ss_output_name": "Hero Character - XL IL V1.0",
+    "ss_sd_model_name": "ponyDiffusionV6XL.safetensors",
+    "ss_tag_frequency": "{\"img\": {}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/Product_Design_Sketch_IL.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "Product_Design_Sketch_IL",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"6_ProductDesign Sketch\": {\"n_repeats\": 6, \"img_count\": 319}}",
+    "ss_output_name": "Product_Design_Sketch_IL",
+    "ss_sd_model_name": "illustriousXL_v01.safetensors",
+    "ss_tag_frequency": "{\"6_ProductDesign Sketch\": {\"product design sketch\": 319, \"no humans\": 282, \"monochrome\": 211, \"sketch\": 211, \"white background\": 205, \"greyscale\": 164, \"traditional media\": 152, \"simple background\": 152, \"english text\": 84, \"vehicle focus\": 78, \"signature\": 71, \"still life\": 62, \"multiple views\": 59, \"motor vehicle\": 43, \"artist name\": 43, \"science fiction\": 43, \"dated\": 37, \"weapon\": 31, \"1girl\": 28, \"lineart\": 28, \"wheel\": 28, \"car\": 25, \"art tools in frame\": 25, \"cup\": 25, \"shadow\": 22, \"solo\": 22, \"chair\": 22, \"gun\": 22, \"reference sheet\": 19, \"twitter username\": 19, \"graphite \\\\(medium\\\\)\": 16, \"grey background\": 16, \"robot\": 16, \"arrow \\\\(symbol\\\\)\": 16, \"standing\": 16, \"military vehicle\": 16, \"long hair\": 16, \"spacecraft\": 12, \"aircraft\": 12, \"watercraft\": 12, \"multiple girls\": 12, \"ink \\\\(medium\\\\)\": 12, \"sitting\": 12, \"pen\": 12, \"cable\": 12, \"holding\": 9, \"holding weapon\": 9, \"sword\": 9, \"drinking glass\": 9, \"colored pencil \\\\(medium\\\\)\": 9, \"walking\": 9, \"ship\": 9, \"military\": 9, \"sports car\": 9, \"spoiler \\\\(automobile\\\\)\": 9, \"pencil\": 9, \"food\": 9, \"comic\": 9, \"smile\": 9, \"bun cover\": 9}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/Color slider - Illustrious_alpha1.0_rank4_noxattn_last.safetensors": {},
+  "illustrious/New_toon_midjourney.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "New_toon_midjourney",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"img\": {\"n_repeats\": 10, \"img_count\": 167}}",
+    "ss_output_name": "New_toon_midjourney",
+    "ss_sd_model_name": "300000.safetensors",
+    "ss_tag_frequency": "{\"img\": {\"toon4on\": 167, \"1girl\": 131, \"solo\": 125, \"shirt\": 108, \"standing\": 87, \"brown hair\": 80, \"looking at viewer\": 80, \"jewelry\": 61, \"smile\": 59, \"long hair\": 59, \"brown eyes\": 53, \"earrings\": 53, \"outdoors\": 51, \"white shirt\": 51, \"upper body\": 51, \"jacket\": 49, \"black hair\": 48, \"walking\": 46, \"day\": 44, \"parted lips\": 44, \"cup\": 36, \"short hair\": 34, \"indoors\": 34, \"sky\": 32, \"pants\": 30, \"blue eyes\": 30, \"sitting\": 30, \"glasses\": 28, \"simple background\": 28, \"portrait\": 28, \"blurry\": 27, \"closed mouth\": 27, \"blush\": 27, \"window\": 25, \"denim\": 25, \"blue sky\": 23, \"cloud\": 23, \"plant\": 23, \"short sleeves\": 23, \"necklace\": 23, \"freckles\": 21, \"white background\": 21, \"green eyes\": 21, \"makeup\": 21, \"hair bun\": 21, \"no humans\": 19, \"black eyes\": 19, \"building\": 19, \"bird\": 19, \"skirt\": 19, \"shorts\": 19, \"blonde hair\": 19, \"collarbone\": 19, \"cowboy shot\": 17, \"jeans\": 17, \"full body\": 17, \"single hair bun\": 17, \"phone\": 17, \"cellphone\": 17, \"holding\": 17}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/PhotoRealTouch_IL-000008.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "PhotoRealTouch_IL",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"img\": {\"n_repeats\": 2, \"img_count\": 227}}",
+    "ss_output_name": "PhotoRealTouch_IL",
+    "ss_sd_model_name": "200000.safetensors",
+    "ss_tag_frequency": "{\"img\": {\"solo\": 211, \"realistic\": 192, \"1girl\": 190, \"freckles\": 114, \"looking at viewer\": 109, \"standing\": 91, \"brown hair\": 83, \"brown eyes\": 72, \"walking\": 62, \"blurry\": 62, \"black hair\": 59, \"blurry background\": 58, \"long hair\": 54, \"full body\": 48, \"shirt\": 48, \"portrait\": 43, \"smile\": 34, \"1boy\": 34, \"male focus\": 34, \"day\": 32, \"sky\": 30, \"cloud\": 19, \"tree\": 19, \"denim\": 19, \"close-up\": 19, \"white shirt\": 19, \"water\": 18, \"pants\": 14, \"city\": 14, \"room\": 14, \"window\": 14, \"teeth\": 14, \"jeans\": 13, \"facial hair\": 13, \"jewelry\": 13, \"shadow\": 11, \"mole\": 11, \"tan\": 11, \"closed mouth\": 10, \"shorts\": 10, \"sitting\": 10, \"beard\": 10, \"tank top\": 10, \"upper body\": 8, \"black shirt\": 8, \"black eyes\": 8, \"earrings\": 8, \"ponytail\": 6, \"parted lips\": 6, \"depth of field\": 6, \"bokeh\": 6, \"outdoors\": 6, \"blonde hair\": 5, \"phone\": 5, \"closed eyes\": 5, \"cellphone\": 5, \"cup\": 5, \"bag\": 5, \"indoors\": 5, \"eye focus\": 5}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/Perspective_IllustXL_Slider_v1.0.safetensors": {
+    "modelspec.architecture": "stable-diffusion-v1/lora",
+    "modelspec.title": "Perspective_IllustXL_Slider",
+    "ss_base_model_version": "sdxl_base_v1-0"
+  },
+  "illustrious/pose_helper.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "pose_helper",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"img\": {\"n_repeats\": 1, \"img_count\": 816}}",
+    "ss_output_name": "pose_helper",
+    "ss_sd_model_name": "200000.safetensors",
+    "ss_tag_frequency": "{\"img\": {\"1girl\": 715, \"solo\": 713, \"long hair\": 414, \"standing\": 304, \"walking\": 301, \"portrait\": 277, \"realistic\": 262, \"looking at viewer\": 235, \"upper body\": 203, \"brown hair\": 191, \"sitting\": 189, \"pants\": 179, \"black hair\": 174, \"jewelry\": 159, \"day\": 152, \"blonde hair\": 142, \"sky\": 140, \"cloud\": 130, \"tree\": 130, \"shirt\": 115, \"water\": 110, \"shorts\": 108, \"shoes\": 105, \"nail polish\": 105, \"close-up\": 98, \"city\": 98, \"room\": 88, \"window\": 76, \"shadow\": 74, \"denim\": 74, \"indoors\": 74, \"smile\": 74, \"depth of field\": 71, \"bokeh\": 69, \"cup\": 69, \"simple background\": 69, \"phone\": 66, \"sneakers\": 64, \"socks\": 64, \"jeans\": 59, \"outdoors\": 56, \"white background\": 49, \"bag\": 47, \"dress\": 47, \"earrings\": 47, \"chair\": 44, \"necklace\": 44, \"table\": 44, \"hat\": 44, \"jacket\": 42, \"full body\": 42, \"reference sheet\": 42, \"coat\": 34, \"teeth\": 34, \"white shirt\": 32, \"ring\": 32, \"glasses\": 32, \"sunglasses\": 32, \"bracelet\": 29, \"ponytail\": 29}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/characterSheetZyx_illus.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "characterSheetZyx_illus",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"img\": {\"n_repeats\": 1, \"img_count\": 959}}",
+    "ss_output_name": "characterSheetZyx_illus",
+    "ss_sd_model_name": "200000.safetensors",
+    "ss_tag_frequency": "{\"img\": {\"1girl\": 918, \"sitting\": 888, \"walking\": 861, \"multiple views\": 826, \"charactersheetxzyx\": 759, \"long hair\": 653, \"gloves\": 580, \"boots\": 551, \"smile\": 491, \"portrait\": 481, \"muscular\": 429, \"brown hair\": 427, \"upper body\": 416, \"blue eyes\": 410, \"standing\": 397, \"full body\": 397, \"dirty\": 397, \"blonde hair\": 392, \"ponytail\": 386, \"looking at viewer\": 381, \"outdoors\": 378, \"indoors\": 375, \"day\": 359, \"fingerless gloves\": 346, \"sky\": 324, \"belt\": 292, \"realistic\": 278, \"weapon\": 246, \"cloud\": 208, \"tree\": 202, \"charactersheetzyx\": 200, \"water\": 162, \"city\": 159, \"armor\": 157, \"jewelry\": 151, \"earrings\": 138, \"room\": 124, \"short hair\": 119, \"pants\": 116, \"holding\": 105, \"sword\": 103, \"window\": 103, \"shadow\": 100, \"holding weapon\": 94, \"shorts\": 94, \"depth of field\": 92, \"parted lips\": 89, \"bokeh\": 89, \"cup\": 89, \"blue hair\": 89, \"watermark\": 86, \"shoulder armor\": 78, \"dress\": 78, \"multiple girls\": 76, \"phone\": 76, \"black hair\": 73, \"shirt\": 73, \"bag\": 68, \"chair\": 65, \"turnaround\": 59}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/cinematic film detailed illu xl v5.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "cinematic film detailed illu xl v5",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"20_cinematic film style\": {\"n_repeats\": 20, \"img_count\": 884}}",
+    "ss_output_name": "cinematic film detailed illu xl v5",
+    "ss_sd_model_name": "illustriousXL_v01.safetensors",
+    "ss_tag_frequency": "{\"20_cinematic film style\": {\"cinematic film style\": 884}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/detailed hands focus style illustriousXL v1.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "detailed hands focus style illustriousXL v1",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"20_detailed style\": {\"n_repeats\": 20, \"img_count\": 188}}",
+    "ss_output_name": "detailed hands focus style illustriousXL v1",
+    "ss_sd_model_name": "illustriousXL_v01.safetensors",
+    "ss_tag_frequency": "{\"20_detailed style\": {\"detailed style\": 188}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/heroineMR-sample-Illust-LoraV202.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "heroineMR-sample-Illust-LoraV202",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"boots\": {\"n_repeats\": 2, \"img_count\": 12}, \"def\": {\"n_repeats\": 2, \"img_count\": 106}, \"other\": {\"n_repeats\": 1, \"img_count\": 68}}",
+    "ss_output_name": "heroineMR-sample-Illust-LoraV202",
+    "ss_sd_model_name": "illustriousXL_v01.safetensors",
+    "ss_tag_frequency": "{\"boots\": {\"qvarra\": 12, \"1girl\": 12, \"knee boots\": 12, \"walking\": 10, \"coattails\": 10, \"smile\": 10, \"portrait\": 8, \"close-up\": 8, \"sitting\": 6, \"blue nails\": 6, \"nail polish\": 6, \"fingernails\": 6, \"upper body\": 4, \"full body\": 4, \"standing\": 4, \"outdoors\": 2, \"indoors\": 2, \"day\": 2, \"gloves\": 2, \"sky\": 2, \"jewelry\": 2, \"cloud\": 2, \"tree\": 2, \"water\": 2, \"city\": 2, \"white border\": 2, \"room\": 2, \"window\": 2, \"shadow\": 2, \"zipper\": 2, \"bokeh\": 2, \"cup\": 2, \"phone\": 2, \"bag\": 2, \"black background\": 2, \"chair\": 2, \"table\": 2, \"hat\": 2, \"simple background\": 2, \"jacket\": 2, \"blurry background\": 2, \"coat\": 2, \"depth of field\": 2, \"long sleeves\": 2, \"shirt\": 2, \"armor\": 2, \"white shirt\": 2, \"crystal\": 2, \"vambraces\": 2}, \"def\": {\"qvarra\": 106, \"1girl\": 104, \"blonde hair\": 104, \"short hair\": 104, \"blue eyes\": 94, \"walking\": 90, \"makeup\": 90, \"portrait\": 88, \"indoors\": 88, \"jewelry\": 86, \"day\": 84, \"looking at viewer\": 84, \"earrings\": 80, \"sky\": 74, \"blue nails\": 72, \"coattails\": 70, \"shoulder armor\": 66, \"nail polish\": 64, \"cloud\": 64, \"collarbone\": 60, \"long sleeves\": 56, \"tree\": 56, \"simple background\": 44, \"knee boots\": 44, \"smile\": 36, \"crystal\": 32, \"fingernails\": 30, \"official alternate costume\": 30, \"parted lips\": 26, \"white background\": 24, \"white footwear\": 24, \"sitting\": 24, \"standing\": 20, \"upper body\": 20, \"water\": 18, \"necklace\": 18, \"blue background\": 16, \"gem\": 16, \"city\": 16, \"room\": 16, \"full body\": 16, \"parted bangs\": 16, \"window\": 16, \"cowboy shot\": 14, \"shorts\": 14, \"blush\": 14, \"eyeshadow\": 12, \"looking down\": 12, \"shadow\": 12, \"sparkle\": 12, \"depth of field\": 10, \"multiple views\": 10, \"one eye closed\": 10, \"holding cup\": 10, \"outdoors\": 10, \"hair over one eye\": 10, \"drinking glass\": 10, \"grey background\": 10, \"character name\": 8, \"bokeh\": 8}, \"other\": {\"qvarra\": 68, \"1girl\": 68, \"blonde hair\": 68, \"short hair\": 68, \"blue eyes\": 64, \"walking\": 60, \"makeup\": 58, \"portrait\": 56, \"jewelry\": 54, \"earrings\": 52, \"upper body\": 52, \"looking at viewer\": 46, \"full body\": 42, \"outdoors\": 42, \"blue nails\": 38, \"nail polish\": 38, \"smile\": 34, \"blush\": 28, \"1boy\": 26, \"simple background\": 24, \"indoors\": 24, \"long sleeves\": 24, \"white background\": 20, \"day\": 20, \"sky\": 20, \"collarbone\": 18, \"cloud\": 16, \"tree\": 16, \"water\": 16, \"fingernails\": 16, \"city\": 16, \"room\": 14, \"shoulder armor\": 14, \"armor\": 14, \"looking down\": 14, \"sitting\": 14, \"solo focus\": 14, \"window\": 14, \"shadow\": 14, \"depth of field\": 12, \"bokeh\": 12, \"cup\": 12, \"heart\": 12, \"coattails\": 12, \"multiple views\": 12, \"phone\": 10, \"bag\": 10, \"chair\": 10, \"table\": 10, \"hat\": 10, \"jacket\": 10, \"coat\": 10, \"english text\": 10, \"speech bubble\": 10, \"shirt\": 10, \"white shirt\": 10, \"parted lips\": 10, \"standing\": 10, \"pants\": 8, \"jeans\": 8}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/hands_anime_il_v3.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "hands_anime_il_v3",
+    "ss_base_model_version": "sdxl_base_v1-0"
+  },
+  "illustrious/hyperrealism_Sample_Style.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl-v1-base/lora",
+    "modelspec.title": "hyperrealism_Sample_Style",
+    "ss_base_model_version": "sdxl_base_v1-0",
+    "ss_dataset_dirs": "{\"img\": {\"n_repeats\": 4, \"img_count\": 2455}}",
+    "ss_output_name": "hyperrealism_Sample_Style",
+    "ss_sd_model_name": "200000.safetensors",
+    "ss_tag_frequency": "{\"img\": {\"masterpiece\": 2455, \"best quality\": 2455, \"ultra-detailed\": 2455, \"highres\": 2455, \"8k\": 2455, \"ultra realistic\": 2455, \"photo-realistic\": 2455, \"finely detailed\": 2455, \"hyperrealism\": 2455, \"skin texture\": 2455, \"realistic\": 2429, \"1girl\": 2406, \"photorealistic\": 2326, \"solo\": 2214, \"standing\": 1947, \"looking at viewer\": 1924, \"long hair\": 1759, \"sitting\": 1396, \"brown hair\": 1049, \"teeth\": 1036, \"smile\": 990, \"blurry\": 931, \"walking\": 908, \"full body\": 898, \"jewelry\": 868, \"brown eyes\": 868, \"close-up\": 858, \"upper body\": 855, \"portrait\": 832, \"nose\": 818, \"black hair\": 789, \"makeup\": 746, \"parted lips\": 726, \"outdoors\": 719, \"blonde hair\": 703, \"mole\": 683, \"day\": 667, \"eyelashes\": 663, \"blue eyes\": 627, \"blurry background\": 561, \"indoors\": 512, \"earrings\": 508, \"open mouth\": 469, \"grin\": 452, \"sky\": 416, \"cloud\": 412, \"tree\": 376, \"simple background\": 376, \"depth of field\": 366, \"black eyes\": 356, \"closed mouth\": 343, \"water\": 340, \"necklace\": 337, \"grey eyes\": 323, \"collarbone\": 320, \"city\": 320, \"room\": 314, \"window\": 310, \"freckles\": 300, \"shadow\": 294}}",
+    "ss_training_comment": "None"
+  },
+  "illustrious/misc_64dim_fp16.safetensors": {},
+  "illustrious/background-detail-enhancer-illustrious.safetensors": {
+    "modelspec.architecture": "stable-diffusion-xl/lora",
+    "modelspec.title": "",
+    "ss_base_model_version": "sdxl_1.0",
+    "ss_dataset_dirs": "{\"dataset\": {\"n_repeats\": 1, \"img_count\": 36}}",
+    "ss_output_name": "training_0000001",
+    "ss_sd_model_name": "urn:air:sdxl:checkpoint:civitai:100000@200000",
+    "ss_tag_frequency": "{\"1_\": {\"\": 2}}"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 156680208700286, "steps": 28, "cfg": 5.5, "sampler_name": "euler_ancestral", "scheduler": "normal",
+      "denoise": 1, "model": ["10", 0], "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["5", 0]
+    }
+  },
+  "4": { "class_type": "CheckpointLoaderSimple", "inputs": { "ckpt_name": "Sample_Illustrious_v1.safetensors" } },
+  "5": { "class_type": "EmptyLatentImage", "inputs": { "width": 832, "height": 1216, "batch_size": 1 } },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": { "text": "masterpiece, best quality, 1girl, red scarf, snowy forest", "clip": ["11", 0] }
+  },
+  "7": { "class_type": "CLIPTextEncode", "inputs": { "text": "lowres, bad hands, watermark", "clip": ["11", 0] } },
+  "8": { "class_type": "VAEDecode", "inputs": { "samples": ["3", 0], "vae": ["4", 2] } },
+  "9": { "class_type": "SaveImage", "inputs": { "filename_prefix": "ComfyUI", "images": ["8", 0] } },
+  "10": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "lora_name": "ink_style.safetensors", "strength_model": 0.8, "strength_clip": 0.6, "model": ["4", 0],
+      "clip": ["4", 1]
+    }
+  },
+  "11": { "class_type": "CLIPSetLastLayer", "inputs": { "stop_at_clip_layer": -2, "clip": ["10", 1] } },
+  "12": { "class_type": "UpscaleModelLoader", "inputs": { "model_name": "4x-UltraSharp.pth" } }
+}

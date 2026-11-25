@@ -1,0 +1,38 @@
+{
+  "last_node_id": 14,
+  "last_link_id": 12,
+  "nodes": [
+    { "id": 3, "type": "KSampler", "mode": 0,
+      "inputs": [
+        { "name": "model", "type": "MODEL", "link": 3 }, { "name": "positive", "type": "CONDITIONING", "link": 7 },
+        { "name": "negative", "type": "CONDITIONING", "link": 8 }, { "name": "latent_image", "type": "LATENT", "link": 9 }
+      ],
+      "widgets_values": [156680208700286, "randomize", 28, 5.5, "euler_ancestral", "normal", 1] },
+    { "id": 4, "type": "CheckpointLoaderSimple", "mode": 0, "inputs": [],
+      "widgets_values": ["Sample_Illustrious_v1.safetensors"] },
+    { "id": 5, "type": "EmptyLatentImage", "mode": 0, "inputs": [], "widgets_values": [832, 1216, 1] },
+    { "id": 6, "type": "CLIPTextEncode", "mode": 0, "inputs": [{ "name": "clip", "type": "CLIP", "link": 5 }],
+      "widgets_values": ["masterpiece, best quality, 1girl, red scarf, snowy forest"] },
+    { "id": 7, "type": "CLIPTextEncode", "mode": 0, "inputs": [{ "name": "clip", "type": "CLIP", "link": 6 }],
+      "widgets_values": ["lowres, bad hands, watermark"] },
+    { "id": 8, "type": "VAEDecode", "mode": 0,
+      "inputs": [{ "name": "samples", "type": "LATENT", "link": 10 }, { "name": "vae", "type": "VAE", "link": 11 }] },
+    { "id": 9, "type": "SaveImage", "mode": 0, "inputs": [{ "name": "images", "type": "IMAGE", "link": 12 }],
+      "widgets_values": ["ComfyUI"] },
+    { "id": 10, "type": "LoraLoader", "mode": 0,
+      "inputs": [{ "name": "model", "type": "MODEL", "link": 1 }, { "name": "clip", "type": "CLIP", "link": 2 }],
+      "widgets_values": ["ink_style.safetensors", 0.8, 0.6] },
+    { "id": 11, "type": "CLIPSetLastLayer", "mode": 0, "inputs": [{ "name": "clip", "type": "CLIP", "link": 4 }],
+      "widgets_values": [-2] },
+    { "id": 12, "type": "UpscaleModelLoader", "mode": 0, "inputs": [], "widgets_values": ["4x-UltraSharp.pth"] },
+    { "id": 13, "type": "LoraLoader", "mode": 2, "inputs": [], "widgets_values": ["muted.safetensors", 1, 1] },
+    { "id": 14, "type": "Note", "mode": 0, "inputs": [], "widgets_values": ["Euler a works best."] }
+  ],
+  "links": [
+    [1, 4, 0, 10, 0, "MODEL"], [2, 4, 1, 10, 1, "CLIP"], [3, 10, 0, 3, 0, "MODEL"], [4, 10, 1, 11, 0, "CLIP"],
+    [5, 11, 0, 6, 0, "CLIP"], [6, 11, 0, 7, 0, "CLIP"], [7, 6, 0, 3, 1, "CONDITIONING"],
+    [8, 7, 0, 3, 2, "CONDITIONING"], [9, 5, 0, 3, 3, "LATENT"], [10, 3, 0, 8, 0, "LATENT"],
+    [11, 4, 2, 8, 1, "VAE"], [12, 8, 0, 9, 0, "IMAGE"]
+  ],
+  "version": 0.4
+}
