@@ -1,0 +1,59 @@
+{
+  "CheckpointLoaderSimple": {
+    "input": {"required": {"ckpt_name": [["illustriousXL_v01.safetensors", "sd15/dreamshaper_8.safetensors"], {"tooltip": "The name of the checkpoint (model) to load."}]}},
+    "output": ["MODEL", "CLIP", "VAE"], "name": "CheckpointLoaderSimple", "category": "loaders"
+  },
+  "VAELoader": {
+    "input": {"required": {"vae_name": [["sdxl_vae.safetensors", "taesd", "taesdxl"]]}},
+    "output": ["VAE"], "name": "VAELoader"
+  },
+  "LoraLoader": {
+    "input": {"required": {
+      "model": ["MODEL"], "clip": ["CLIP"],
+      "lora_name": ["COMBO", {"options": ["characters/mia_v1.safetensors", "style/ink_lines.safetensors"], "tooltip": "The name of the LoRA."}],
+      "strength_model": ["FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01}],
+      "strength_clip": ["FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01}]
+    }},
+    "output": ["MODEL", "CLIP"], "name": "LoraLoader"
+  },
+  "ControlNetLoader": {
+    "input": {"required": {"control_net_name": [["controlnet-union-sdxl-1.0.safetensors", "control_v11p_sd15_lineart.pth"]]}},
+    "output": ["CONTROL_NET"], "name": "ControlNetLoader"
+  },
+  "ControlNetApplyAdvanced": {
+    "input": {
+      "required": {
+        "positive": ["CONDITIONING"], "negative": ["CONDITIONING"], "control_net": ["CONTROL_NET"], "image": ["IMAGE"],
+        "strength": ["FLOAT", {"default": 1.0}], "start_percent": ["FLOAT", {"default": 0.0}], "end_percent": ["FLOAT", {"default": 1.0}]
+      },
+      "optional": {"vae": ["VAE"]}
+    },
+    "output": ["CONDITIONING", "CONDITIONING"], "name": "ControlNetApplyAdvanced"
+  },
+  "KSampler": {
+    "input": {"required": {
+      "model": ["MODEL"], "seed": ["INT", {"default": 0, "min": 0, "max": 18446744073709551615}],
+      "steps": ["INT", {"default": 20}], "cfg": ["FLOAT", {"default": 8.0}],
+      "sampler_name": [["euler", "euler_ancestral", "dpmpp_2m", "dpmpp_2m_sde"]],
+      "scheduler": [["normal", "karras", "exponential", "simple"]],
+      "positive": ["CONDITIONING"], "negative": ["CONDITIONING"], "latent_image": ["LATENT"],
+      "denoise": ["FLOAT", {"default": 1.0}]
+    }},
+    "output": ["LATENT"], "name": "KSampler"
+  },
+  "Canny": {
+    "input": {"required": {"image": ["IMAGE"], "low_threshold": ["FLOAT", {"default": 0.4}], "high_threshold": ["FLOAT", {"default": 0.8}]}},
+    "output": ["IMAGE"], "name": "Canny"
+  },
+  "AIO_Aux_Preprocessor": {
+    "input": {
+      "required": {"image": ["IMAGE"]},
+      "optional": {
+        "preprocessor": [["none", "LineArtPreprocessor", "ScribblePreprocessor", "DepthAnythingV2Preprocessor", "DWPreprocessor"], {"default": "none"}],
+        "resolution": ["INT", {"default": 512, "min": 64, "max": 16384, "step": 64}]
+      }
+    },
+    "output": ["IMAGE"], "name": "AIO_Aux_Preprocessor"
+  },
+  "ETN_LoadImageBase64": {"input": {"required": {"image": ["STRING", {"multiline": false}]}}, "output": ["IMAGE", "MASK"], "name": "ETN_LoadImageBase64"}
+}
