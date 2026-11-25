@@ -94,6 +94,6 @@ Gallery/
 { "version": 1, "workflows": [{ "id": "…", "name": "Foxes", "created": "…", "modified": "…", "presetID": "…" }] }
 ```
 
-`presetID` (optional) is the preset the workflow belongs to; it is missing for workflows kept after their preset was deleted. Nodes Lightbox manages carry their part of the generation in `properties.lightbox_role` (e.g. `"sampler"`, `"lora:styles/ink.safetensors"`); ComfyUI keeps it.
+`presetID` (optional) is the preset the workflow belongs to; it is missing for workflows kept after their preset was deleted. `overrides` (optional, only written when there are any) holds preset values changed in the workflow's graph: `checkpoint`, `vae`, `textEncoders`, `sampler`, `scheduler`, `steps`, `cfg`, `clipSkip`, `guidance`, `shift`, each optional. The preset itself is not changed; prompts stay the preset's. Nodes Lightbox manages carry their part of the generation in `properties.lightbox_role` (e.g. `"sampler"`, `"lora:styles/ink.safetensors"`); ComfyUI keeps it.
 
 Fields Lightbox doesn't know (from newer ComfyUI frontends or custom nodes) are kept when a workflow is saved again. Code: `LightboxCore/WorkflowStore.swift`, `ComfyKit/WorkflowDocument.swift`.

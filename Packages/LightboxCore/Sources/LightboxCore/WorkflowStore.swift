@@ -18,15 +18,45 @@ public struct WorkflowEntry: Codable, Hashable, Identifiable, Sendable {
     /// The preset the workflow belongs to; `nil` for workflows without one
     /// (kept when their preset was deleted, or saved before presets had them).
     public var presetID: UUID?
+    /// Preset values changed in the workflow's graph.
+    public var overrides: PresetOverrides
 
     public init(
-        id: UUID = UUID(), name: String, created: Date = Date(), modified: Date = Date(), presetID: UUID? = nil
+        id: UUID = UUID(), name: String, created: Date = Date(), modified: Date = Date(), presetID: UUID? = nil,
+        overrides: PresetOverrides = PresetOverrides()
     ) {
         self.id = id
         self.name = name
         self.created = created
         self.modified = modified
         self.presetID = presetID
+        self.overrides = overrides
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, created, modified, presetID, overrides
+    }
+
+    // Older entries have no overrides.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        created = try c.decode(Date.self, forKey: .created)
+        modified = try c.decode(Date.self, forKey: .modified)
+        presetID = try c.decodeIfPresent(UUID.self, forKey: .presetID)
+        overrides = try c.decodeIfPresent(PresetOverrides.self, forKey: .overrides) ?? PresetOverrides()
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(created, forKey: .created)
+        try c.encode(modified, forKey: .modified)
+        try c.encodeIfPresent(presetID, forKey: .presetID)
+        // Only when there are any, so the index stays small.
+        if !overrides.isEmpty { try c.encode(overrides, forKey: .overrides) }
     }
 }
 

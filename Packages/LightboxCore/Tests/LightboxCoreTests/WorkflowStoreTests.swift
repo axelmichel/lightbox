@@ -60,6 +60,39 @@ private let png = Data(
     let index = try JSONDecoder.gallery.decode(WorkflowIndex.self, from: Data(json.utf8))
     #expect(index.workflows.first?.name == "Old")
     #expect(index.workflows.first?.presetID == nil)
+    #expect(index.workflows.first?.overrides.isEmpty == true)
+}
+
+@Test func overridesChangeThePresetNotItsPrompts() throws {
+    let preset = GenerationPreset(
+        name: "Photo", checkpoint: "photo-xl.safetensors", sampler: "euler", scheduler: "normal", steps: 30, cfg: 5)
+    var o = PresetOverrides()
+    o.steps = 12
+    o.sampler = "dpmpp_2m"
+    o.checkpoint = "photo-xl-v2.safetensors"
+    let p = o.applied(to: preset)
+    #expect((p.steps, p.sampler, p.checkpoint, p.cfg) == (12, "dpmpp_2m", "photo-xl-v2.safetensors", 5))
+    #expect(
+        (p.id, p.stylePrompt, p.negativePrompt, p.dialect) == (
+            preset.id, preset.stylePrompt, preset.negativePrompt, preset.dialect
+        ))
+    // Set back to the preset's value, the override goes.
+    o.steps = 30
+    var trimmed = o.trimmed(for: preset)
+    #expect(trimmed.steps == nil && trimmed.sampler == "dpmpp_2m")
+    trimmed.sampler = nil
+    trimmed.checkpoint = nil
+    #expect(trimmed.isEmpty)
+
+    // Kept with the workflow, and only written when there are any.
+    let root = tempRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = WorkflowStore(root: root)
+    let file = Data(#"{"nodes":[],"links":[],"version":0.4}"#.utf8)
+    let saved = try store.save(WorkflowEntry(name: "A", overrides: o), data: file)
+    #expect(try store.list().first { $0.id == saved.id }?.overrides == o)
+    let plain = try JSONEncoder.gallery.encode(WorkflowEntry(name: "B"))
+    #expect(!String(decoding: plain, as: UTF8.self).contains("overrides"))
 }
 
 @Test func picturesKeepTheWorkflowTheyWereMadeWith() throws {

@@ -83,6 +83,13 @@ public final class GenerationModel {
         library.presets.first { $0.id == presetID } ?? library.presets.first
     }
 
+    /// The preset with the changes of the workflow shown in the node graph:
+    /// what is generated with. The preset itself stays as it is.
+    public func effectivePreset(_ app: AppModel) -> GenerationPreset? {
+        guard let preset = preset(in: app.library) else { return nil }
+        return shownWorkflow(app, preset: preset).map { $0.overrides.applied(to: preset) } ?? preset
+    }
+
     /// The styles picked that fit `preset`, in category order.
     public func activeModifiers(for preset: GenerationPreset, in library: Library) -> [StyleModifier] {
         ModifierCategory.active(for: preset.style).compactMap { modifier(for: $0, in: library) }
@@ -139,7 +146,7 @@ public final class GenerationModel {
     public func generate(_ app: AppModel) {
         guard !isRunning else { return }
         guard let client = app.client else { return fail("Not connected to ComfyUI. Check the Settings.") }
-        guard let preset = preset(in: app.library) else { return fail("Create a preset first.") }
+        guard let preset = effectivePreset(app) else { return fail("Create a preset first.") }
         if let problem = preset.problem(with: app.catalog) { return fail(problem) }
         if !guides.isEmpty, !preset.family.supportsGuides {
             return fail("Guides don't work with \(preset.family.label) models yet; remove them to generate.")
@@ -264,7 +271,7 @@ public final class GenerationModel {
 
     /// What the form would send now, as a node-editor document.
     func graph(_ app: AppModel) -> Result<GraphState, Problem> {
-        guard let preset = preset(in: app.library) else { return .failure(Problem(message: "Create a preset first.")) }
+        guard let preset = effectivePreset(app) else { return .failure(Problem(message: "Create a preset first.")) }
         let typed = Int(seedText.trimmingCharacters(in: .whitespaces))
         return prepare(preset, seed: typed ?? 0, app, showingRefused: true).flatMap { prepared in
             let built = WorkflowBuilder.build(prepared.request, catalog: app.catalog)
