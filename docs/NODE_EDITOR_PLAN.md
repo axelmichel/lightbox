@@ -264,8 +264,8 @@ Workflows · Live-Vorschau am Knoten · iPad-Touch.
 
 - **F1 (vor 5.2)** Soll das Rezept den ganzen Graphen einbetten (Bild exakt reproduzierbar, größere Dateien) oder
   nur auf den Workflow verweisen (klein, aber spätere Änderungen am Workflow verfälschen die Herkunft)?
-- **F2 (vor 3.2)** Was passiert mit den Workflows, wenn ihr Preset gelöscht wird: mitlöschen, verwaist behalten
-  oder Löschen verhindern?
+- **F2 (vor 3.2), entschieden:** Hat ein Preset Workflows, fragt das Löschen nach. Standard ist „Preset und
+  Workflows löschen“; die Alternative „Workflows behalten“ lässt sie ohne Preset stehen.
 - **F3 (vor 4.3)** Gilt die zuletzt gewählte Workflow-Auswahl pro Preset oder global für Generate?
 - **F4 (vor 6.2)** Sollen in der Knotensuche alle Knoten des Servers erscheinen oder zuerst eine kuratierte Auswahl?
 
