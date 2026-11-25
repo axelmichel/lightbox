@@ -252,3 +252,76 @@ private func requests() throws -> [(name: String, request: GenerationRequest)] {
         #expect(try x(NodeRole(.sampler)) < x(NodeRole(.output)), "\(name)")
     }
 }
+
+@Test func readingTheProjectionGivesTheRequestsValues() throws {
+    let c = try kritaCatalog()
+    for (name, r) in try requests() {
+        let doc = try WorkflowDocument(WorkflowBuilder.build(r, catalog: c), catalog: c)
+        let managed = ManagedGraph(try WorkflowDocument(data: doc.data()), catalog: c)
+        #expect(managed.missing.isEmpty, "\(name): \(managed.missing)")
+        #expect(managed.settings == GraphSettings(r), "\(name)")
+    }
+}
+
+@Test func readsValuesByRole() throws {
+    let c = try kritaCatalog()
+    let (_, r) = try #require(try requests().first { $0.name == "checkpoint_guides_fixes" })
+    let managed = ManagedGraph(try WorkflowDocument(WorkflowBuilder.build(r, catalog: c), catalog: c), catalog: c)
+    let s = managed.settings
+    #expect(managed.values[NodeRole(.sampler)]?["steps"] == .int(r.steps))
+    #expect(s.loras.map(\.name) == ["a.safetensors", "styles/b.safetensors"])
+    #expect(s.loras[1].clipStrength == 0)
+    #expect(s.clipSkip == 2)
+    #expect(s.guides.keys.sorted() == [0, 1, 2])
+    #expect(s.guides[2] == GraphSettings.Guide(strength: 0.6, start: 0, end: 0.8))  // the IP-Adapter
+    #expect(s.faceFix == GraphSettings.Fix(detector: "bbox/face_yolov8m.pt", denoise: 0.35, guideSize: 768))
+    #expect(s.handFix?.guideSize == 512)
+    #expect(s.batchSize == 2)
+}
+
+@Test func reportsMissingRoles() throws {
+    let c = try kritaCatalog()
+    let all = try requests()
+    func missing(_ name: String, without roles: [NodeRole]) throws -> [NodeRole] {
+        let (_, r) = try #require(all.first { $0.name == name })
+        let built = WorkflowBuilder.build(r, catalog: c)
+        var doc = try WorkflowDocument(built, catalog: c)
+        doc.graph.removeNodes(Set(roles.flatMap { built.ids($0) }.compactMap { Int($0) }))
+        return ManagedGraph(doc, catalog: c).missing
+    }
+    #expect(try missing("checkpoint", without: [NodeRole(.checkpoint)]) == [NodeRole(.checkpoint)])
+    #expect(
+        try missing("checkpoint", without: [NodeRole(.output), NodeRole(.latent)]) == [
+            NodeRole(.latent), NodeRole(.output),
+        ])
+    // A LoRA is optional.
+    #expect(try missing("checkpoint", without: [NodeRole(.lora, key: "a.safetensors")]).isEmpty)
+    #expect(try missing("flux", without: [NodeRole(.vae)]) == [NodeRole(.vae)])
+    #expect(try missing("flux2", without: [NodeRole(.sampler, .select)]) == [NodeRole(.sampler, .select)])
+    let guided = "checkpoint_guides_fixes"
+    #expect(
+        try missing(guided, without: [NodeRole(.guide, .loader, key: "0")]) == [
+            NodeRole(.guide, .loader, key: "0")
+        ])
+    #expect(try missing(guided, without: [NodeRole(.faceFix, .detector)]) == [NodeRole(.faceFix, .detector)])
+    // Inpainting has no empty latent.
+    #expect(try missing("checkpoint_inpaint", without: [NodeRole(.inpaint, .mask)]) == [NodeRole(.inpaint, .mask)])
+}
+
+@Test func readingShowsValuesChangedInTheGraph() throws {
+    let c = try kritaCatalog()
+    let (_, r) = try #require(try requests().first { $0.name == "checkpoint" })
+    let built = WorkflowBuilder.build(r, catalog: c)
+    var doc = try WorkflowDocument(built, catalog: c)
+    func change(_ role: NodeRole, _ input: String, _ value: JSONValue) throws {
+        let id = try #require(built.ids(role).first.flatMap { Int($0) })
+        let i = try #require(doc.graph.index(of: id))
+        doc.graph.nodes[i].setWidgetValue(input, value, spec: c.nodes[doc.graph.nodes[i].type])
+    }
+    try change(NodeRole(.sampler), "steps", .int(30))
+    try change(NodeRole(.lora, key: "a.safetensors"), "strength_model", .double(0.4))
+    var expected = GraphSettings(r)
+    expected.steps = 30
+    expected.loras[0].strength = 0.4
+    #expect(ManagedGraph(doc, catalog: c).settings == expected)
+}
