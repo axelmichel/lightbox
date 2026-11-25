@@ -129,6 +129,8 @@ private struct ComposeCanvas: View {
     @State private var snapped: (x: Double?, y: Double?) = (nil, nil)
     /// A guide being dragged: the state before, and the guide.
     @State private var guideDrag: (before: Composition, id: UUID)?
+    /// The pointer over the canvas area, for the brushes' outline.
+    @State private var pointer: CGPoint?
     @AppStorage("composeRulers") private var rulers = false
     @AppStorage("composeGrid") private var grid = false
     @AppStorage("composeGridSize") private var gridSize = 64.0
@@ -234,7 +236,16 @@ private struct ComposeCanvas: View {
                                 scale: s,
                                 origin: CGPoint(
                                     x: max(Self.margin, (geo.size.width - Double(c.width) * s) / 2),
-                                    y: max(Self.margin, (geo.size.height - Double(c.height) * s) / 2))))
+                                    y: max(Self.margin, (geo.size.height - Double(c.height) * s) / 2)))
+                        )
+                        // The brush's size and shape under the pointer; same
+                        // area and coordinates as the drag above.
+                        .onContinuousHover { phase in
+                            if case .active(let p) = phase { pointer = p } else { pointer = nil }
+                            updateCursor()
+                        }
+                        .overlay(alignment: .topLeading) { brushOutline(scale: s) }
+                        .onChange(of: doc.tool) { updateCursor() }
                 }
                 // Zooming keeps the canvas in the middle.
                 .onChange(of: doc.zoom) { proxy.scrollTo("canvas", anchor: .center) }
@@ -252,6 +263,50 @@ private struct ComposeCanvas: View {
             )
             .overlay(alignment: .bottomTrailing) { zoomControls(scale: s, fit: fit).padding(10) }
         }
+    }
+
+    // MARK: Brush outline
+
+    /// Diameter in canvas pixels and the share drawn at full strength, for
+    /// the tools that paint; `nil` for the others.
+    private var brushShape: (size: Double, hardness: Double?)? {
+        switch doc.tool {
+        case .brush: (doc.brushSize, nil)
+        case .eraser: (doc.eraserSize, doc.eraserHardness)
+        case .smooth: (doc.smoothSize, 0.5)
+        case .move, .magicWand, .area: nil
+        }
+    }
+
+    /// A circle as big as the brush where the pointer is: the full size, and
+    /// dashed inside it the part at full strength (the rest fades).
+    @ViewBuilder
+    private func brushOutline(scale s: Double) -> some View {
+        if let pointer, let shape = brushShape {
+            let d = max(4, shape.size * s)
+            ZStack {
+                Circle().stroke(.black.opacity(0.6), lineWidth: 3)
+                Circle().stroke(.white, lineWidth: 1.5)
+                if let hardness = shape.hardness, hardness > 0.05, hardness < 0.98 {
+                    Circle()
+                        .stroke(.white.opacity(0.8), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        .frame(width: d * hardness, height: d * hardness)
+                }
+                // The middle, for small sizes.
+                Rectangle().fill(.white).frame(width: 1, height: 7)
+                Rectangle().fill(.white).frame(width: 7, height: 1)
+            }
+            .frame(width: d, height: d)
+            .position(pointer)
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// A crosshair instead of the arrow while a brush is the tool.
+    private func updateCursor() {
+        #if os(macOS)
+            if pointer != nil, brushShape != nil { NSCursor.crosshair.set() } else { NSCursor.arrow.set() }
+        #endif
     }
 
     // MARK: Drawing
@@ -424,6 +479,7 @@ private struct ComposeCanvas: View {
         func local(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x - origin.x, y: p.y - origin.y) }
         return DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { v in
+                pointer = v.location
                 let start = local(v.startLocation)
                 let now = local(v.location)
                 let x = start.x / s
