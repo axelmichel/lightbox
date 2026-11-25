@@ -93,9 +93,9 @@ struct ComposeView: View {
                     }
                 }
             if layersShown {
-                PanelResizeHandle(width: $layersWidth, range: 260...560)
+                PanelResizeHandle(width: $layersWidth, range: 280...560)
                 ComposeSidePanel(doc: doc) { layersShown = false }
-                    .frame(width: min(max(layersWidth, 260), 560))
+                    .frame(width: min(max(layersWidth, 280), 560))
                     .transition(.move(edge: .trailing))
             }
         }

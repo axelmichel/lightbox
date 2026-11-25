@@ -108,32 +108,47 @@ struct SizeFields: View {
     var size: (AspectRatio) -> (width: Int, height: Int) = { $0.size(for: .sdxl) }
 
     var body: some View {
-        HStack {
-            Menu(AspectRatio.matching(width: width, height: height)?.label ?? "Custom") {
-                ForEach([false, true], id: \.self) { portrait in
-                    Section(portrait ? "Portrait" : "Landscape") {
-                        ForEach(AspectRatio.allCases.filter { $0.isPortrait == portrait }, id: \.self) { format in
-                            let s = size(format)
-                            Button("\(format.label)  \(s.width) × \(s.height)") { (width, height) = s }
-                        }
-                    }
-                }
+        // One row where it fits; in a narrow panel the fields go under the menu.
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                format
+                fields
             }
-            .fixedSize()
-            .help("Picture format")
-            // Short labels: forms show them beside the fields, and side panels are narrow.
-            TextField("w", value: rounded($width), format: .number).frame(minWidth: 52)
-                .accessibilityLabel("Width")
-            Text("×").foregroundStyle(.secondary)
-            TextField("h", value: rounded($height), format: .number).frame(minWidth: 52)
-                .accessibilityLabel("Height")
-            Button("Swap", systemImage: "arrow.left.arrow.right") { (width, height) = (height, width) }
-                .labelStyle(.iconOnly)
-                .help("Swap width and height")
+            VStack(alignment: .leading) {
+                format
+                HStack { fields }
+            }
         }
         #if os(iOS)
             .keyboardType(.numberPad)
         #endif
+    }
+
+    private var format: some View {
+        Menu(AspectRatio.matching(width: width, height: height)?.label ?? "Custom") {
+            ForEach([false, true], id: \.self) { portrait in
+                Section(portrait ? "Portrait" : "Landscape") {
+                    ForEach(AspectRatio.allCases.filter { $0.isPortrait == portrait }, id: \.self) { format in
+                        let s = size(format)
+                        Button("\(format.label)  \(s.width) × \(s.height)") { (width, height) = s }
+                    }
+                }
+            }
+        }
+        .fixedSize()
+        .help("Picture format")
+    }
+
+    @ViewBuilder private var fields: some View {
+        // Short labels: forms show them beside the fields, and side panels are narrow.
+        TextField("w", value: rounded($width), format: .number).frame(minWidth: 52)
+            .accessibilityLabel("Width")
+        Text("×").foregroundStyle(.secondary)
+        TextField("h", value: rounded($height), format: .number).frame(minWidth: 52)
+            .accessibilityLabel("Height")
+        Button("Swap", systemImage: "arrow.left.arrow.right") { (width, height) = (height, width) }
+            .labelStyle(.iconOnly)
+            .help("Swap width and height")
     }
 
     private func rounded(_ value: Binding<Int>) -> Binding<Int> {
