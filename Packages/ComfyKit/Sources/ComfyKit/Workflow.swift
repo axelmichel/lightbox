@@ -39,9 +39,15 @@ public struct WorkflowNode: Equatable, Sendable {
 }
 
 /// An output of a node, used to wire the next one.
-public struct Output: Equatable, Sendable {
+public struct Output: Hashable, Sendable {
     public var node: String
     public var slot: Int
+
+    public init(node: String, slot: Int) {
+        self.node = node
+        self.slot = slot
+    }
+
     var input: NodeInput { .link(node, slot) }
 }
 
@@ -355,7 +361,13 @@ public enum WorkflowBuilder {
     /// Preview images live in ComfyUI's temp folder, so nothing piles up in
     /// its output folder.
     public static func txt2img(_ r: GenerationRequest, catalog: ComfyCatalog) -> WorkflowGraph {
-        var g = WorkflowGraph()
+        build(r, catalog: catalog).graph
+    }
+
+    /// The graph of `txt2img`, with the role of every node and the ends of
+    /// its chains.
+    public static func build(_ r: GenerationRequest, catalog: ComfyCatalog) -> BuiltWorkflow {
+        var g = RoleRecorder()
         var model: Output
         var clip: Output
         var vae: Output
@@ -363,7 +375,7 @@ public enum WorkflowBuilder {
             let loaders = split.loaderNodes
             var unet: [String: NodeInput] = ["unet_name": .string(split.model)]
             if loaders[0] == "UNETLoader" { unet["weight_dtype"] = .string("default") }
-            model = Output(node: g.add(loaders[0], unet), slot: 0)
+            model = Output(node: g.add(NodeRole(.diffusionModel), loaders[0], unet), slot: 0)
             var encoders: [String: NodeInput] = ["type": .string(split.clipType)]
             if split.textEncoders.count >= 2 {
                 encoders["clip_name1"] = .string(split.textEncoders[0])
@@ -371,20 +383,20 @@ public enum WorkflowBuilder {
             } else {
                 encoders["clip_name"] = .string(split.textEncoders.first ?? "")
             }
-            clip = Output(node: g.add(loaders[1], encoders), slot: 0)
-            vae = Output(node: g.add("VAELoader", ["vae_name": .string(split.vae)]), slot: 0)
+            clip = Output(node: g.add(NodeRole(.textEncoders), loaders[1], encoders), slot: 0)
+            vae = Output(node: g.add(NodeRole(.vae), "VAELoader", ["vae_name": .string(split.vae)]), slot: 0)
         } else {
-            let ckpt = g.add("CheckpointLoaderSimple", ["ckpt_name": .string(r.checkpoint)])
+            let ckpt = g.add(NodeRole(.checkpoint), "CheckpointLoaderSimple", ["ckpt_name": .string(r.checkpoint)])
             model = Output(node: ckpt, slot: 0)
             clip = Output(node: ckpt, slot: 1)
             vae = Output(node: ckpt, slot: 2)
             if let name = r.vae, !name.isEmpty {
-                vae = Output(node: g.add("VAELoader", ["vae_name": .string(name)]), slot: 0)
+                vae = Output(node: g.add(NodeRole(.vae), "VAELoader", ["vae_name": .string(name)]), slot: 0)
             }
         }
         for lora in r.loras {
             let id = g.add(
-                "LoraLoader",
+                NodeRole(.lora, key: lora.name), "LoraLoader",
                 [
                     "model": model.input, "clip": clip.input, "lora_name": .string(lora.name),
                     "strength_model": .double(lora.strength), "strength_clip": .double(lora.clipStrength),
@@ -393,50 +405,69 @@ public enum WorkflowBuilder {
             clip = Output(node: id, slot: 1)
         }
         if let shift = r.split?.shift {
-            let id = g.add("ModelSamplingAuraFlow", ["model": model.input, "shift": .double(shift)])
+            let id = g.add(
+                NodeRole(.shift), "ModelSamplingAuraFlow", ["model": model.input, "shift": .double(shift)])
             model = Output(node: id, slot: 0)
         }
         if r.clipSkip > 1, r.split == nil {
-            let id = g.add("CLIPSetLastLayer", ["clip": clip.input, "stop_at_clip_layer": .int(-r.clipSkip)])
+            let id = g.add(
+                NodeRole(.clipSkip), "CLIPSetLastLayer",
+                ["clip": clip.input, "stop_at_clip_layer": .int(-r.clipSkip)])
             clip = Output(node: id, slot: 0)
         }
 
         let encoded = Output(
-            node: g.add("CLIPTextEncode", ["text": .string(r.positive), "clip": clip.input]), slot: 0)
+            node: g.add(NodeRole(.positive), "CLIPTextEncode", ["text": .string(r.positive), "clip": clip.input]),
+            slot: 0)
         var textPositive = encoded
         if let guidance = r.split?.guidance {
-            let id = g.add("FluxGuidance", ["conditioning": encoded.input, "guidance": .double(guidance)])
+            let id = g.add(
+                NodeRole(.guidance), "FluxGuidance", ["conditioning": encoded.input, "guidance": .double(guidance)])
             textPositive = Output(node: id, slot: 0)
         }
         // Edit models: the pictures to change, as references on the prompt.
-        for reference in r.references {
-            let pixels = g.add("LoadImage", ["image": .string(reference.imageName)])
-            let encoded = g.add("VAEEncode", ["pixels": .link(pixels, 0), "vae": vae.input])
-            let id = g.add("ReferenceLatent", ["conditioning": textPositive.input, "latent": .link(encoded, 0)])
+        for (i, reference) in r.references.enumerated() {
+            let key = String(i)
+            let pixels = g.add(
+                NodeRole(.reference, .image, key: key), "LoadImage", ["image": .string(reference.imageName)])
+            let encoded = g.add(
+                NodeRole(.reference, .encode, key: key), "VAEEncode", ["pixels": .link(pixels, 0), "vae": vae.input])
+            let id = g.add(
+                NodeRole(.reference, key: key), "ReferenceLatent",
+                ["conditioning": textPositive.input, "latent": .link(encoded, 0)])
             textPositive = Output(node: id, slot: 0)
         }
         let textNegative =
             r.split?.zeroNegative == true
-            ? Output(node: g.add("ConditioningZeroOut", ["conditioning": encoded.input]), slot: 0)
-            : Output(node: g.add("CLIPTextEncode", ["text": .string(r.negative), "clip": clip.input]), slot: 0)
+            ? Output(node: g.add(NodeRole(.negative), "ConditioningZeroOut", ["conditioning": encoded.input]), slot: 0)
+            : Output(
+                node: g.add(NodeRole(.negative), "CLIPTextEncode", ["text": .string(r.negative), "clip": clip.input]),
+                slot: 0)
         // The fix passes use the character LoRAs but not the guides: a pose
         // or composition of the whole image means nothing for a face crop.
         let detailModel = model
         var positive = textPositive
         var negative = textNegative
 
-        for guide in r.guides {
-            let loaded = Output(node: g.add("LoadImage", ["image": .string(guide.imageName)]), slot: 0)
+        for (i, guide) in r.guides.enumerated() {
+            let key = String(i)
+            let loaded = Output(
+                node: g.add(NodeRole(.guide, .image, key: key), "LoadImage", ["image": .string(guide.imageName)]),
+                slot: 0)
             switch guide.setup {
             case .controlNet(let name, let unionType, let extractor):
                 var image = loaded
                 if guide.extract, let extractor {
-                    image = preprocess(&g, image, extractor, catalog)
+                    image = preprocess(&g, NodeRole(.guide, .extract, key: key), image, extractor, catalog)
                 }
-                var controlNet = Output(node: g.add("ControlNetLoader", ["control_net_name": .string(name)]), slot: 0)
+                var controlNet = Output(
+                    node: g.add(
+                        NodeRole(.guide, .loader, key: key), "ControlNetLoader", ["control_net_name": .string(name)]),
+                    slot: 0)
                 if let unionType {
                     let id = g.add(
-                        "SetUnionControlNetType", ["control_net": controlNet.input, "type": .string(unionType)])
+                        NodeRole(.guide, .unionType, key: key), "SetUnionControlNetType",
+                        ["control_net": controlNet.input, "type": .string(unionType)])
                     controlNet = Output(node: id, slot: 0)
                 }
                 var inputs: [String: NodeInput] = [
@@ -445,15 +476,17 @@ public enum WorkflowBuilder {
                     "start_percent": .double(guide.startPercent), "end_percent": .double(guide.endPercent),
                 ]
                 if catalog.controlNetTakesVAE { inputs["vae"] = vae.input }
-                let apply = g.add("ControlNetApplyAdvanced", inputs)
+                let apply = g.add(NodeRole(.guide, key: key), "ControlNetApplyAdvanced", inputs)
                 positive = Output(node: apply, slot: 0)
                 negative = Output(node: apply, slot: 1)
 
             case .ipAdapter(let name, let clipVision, let weightType):
-                let adapter = g.add("IPAdapterModelLoader", ["ipadapter_file": .string(name)])
-                let vision = g.add("CLIPVisionLoader", ["clip_name": .string(clipVision)])
+                let adapter = g.add(
+                    NodeRole(.guide, .loader, key: key), "IPAdapterModelLoader", ["ipadapter_file": .string(name)])
+                let vision = g.add(
+                    NodeRole(.guide, .clipVision, key: key), "CLIPVisionLoader", ["clip_name": .string(clipVision)])
                 let id = g.add(
-                    "IPAdapterAdvanced",
+                    NodeRole(.guide, key: key), "IPAdapterAdvanced",
                     [
                         "model": model.input, "ipadapter": .link(adapter, 0), "image": loaded.input,
                         "clip_vision": .link(vision, 0), "weight": .double(guide.strength),
@@ -470,37 +503,46 @@ public enum WorkflowBuilder {
         if let source = r.inpaint {
             // The noise mask keeps the rest of the latent as it is, so any
             // checkpoint works and `denoise` below 1 keeps the shapes.
-            let pixels = g.add("LoadImage", ["image": .string(source.imageName)])
-            let encoded = g.add("VAEEncode", ["pixels": .link(pixels, 0), "vae": vae.input])
-            let mask = g.add("LoadImageMask", ["image": .string(source.maskName), "channel": .string("red")])
+            let pixels = g.add(NodeRole(.inpaint, .image), "LoadImage", ["image": .string(source.imageName)])
+            let encoded = g.add(
+                NodeRole(.inpaint, .encode), "VAEEncode", ["pixels": .link(pixels, 0), "vae": vae.input])
+            let mask = g.add(
+                NodeRole(.inpaint, .mask), "LoadImageMask",
+                ["image": .string(source.maskName), "channel": .string("red")])
             latent = Output(
-                node: g.add("SetLatentNoiseMask", ["samples": .link(encoded, 0), "mask": .link(mask, 0)]), slot: 0)
+                node: g.add(
+                    NodeRole(.inpaint), "SetLatentNoiseMask", ["samples": .link(encoded, 0), "mask": .link(mask, 0)]),
+                slot: 0)
             denoise = min(max(source.denoise, 0.05), 1)
         } else {
             // Flux and Z-Image have 16-channel latents, Flux 2 its own.
             let id = g.add(
+                NodeRole(.latent),
                 flux2 ? "EmptyFlux2LatentImage" : r.split == nil ? "EmptyLatentImage" : "EmptySD3LatentImage",
                 ["width": .int(r.width), "height": .int(r.height), "batch_size": .int(max(1, r.batchSize))])
             latent = Output(node: id, slot: 0)
         }
         let sampled: Output
         if flux2 {
-            let noise = g.add("RandomNoise", ["noise_seed": .int(r.seed)])
+            let noise = g.add(NodeRole(.sampler, .noise), "RandomNoise", ["noise_seed": .int(r.seed)])
             let guider = g.add(
-                "CFGGuider",
+                NodeRole(.sampler, .guider), "CFGGuider",
                 ["model": model.input, "positive": positive.input, "negative": negative.input, "cfg": .double(r.cfg)])
-            let select = g.add("KSamplerSelect", ["sampler_name": .string(r.sampler)])
+            let select = g.add(NodeRole(.sampler, .select), "KSamplerSelect", ["sampler_name": .string(r.sampler)])
             var sigmas = Output(
                 node: g.add(
-                    "Flux2Scheduler", ["steps": .int(r.steps), "width": .int(r.width), "height": .int(r.height)]),
+                    NodeRole(.sampler, .scheduler), "Flux2Scheduler",
+                    ["steps": .int(r.steps), "width": .int(r.width), "height": .int(r.height)]),
                 slot: 0)
             if denoise < 1 {
                 // The low end of the schedule: only that much noise is added.
-                let split = g.add("SplitSigmasDenoise", ["sigmas": sigmas.input, "denoise": .double(denoise)])
+                let split = g.add(
+                    NodeRole(.sampler, .sigmas), "SplitSigmasDenoise",
+                    ["sigmas": sigmas.input, "denoise": .double(denoise)])
                 sigmas = Output(node: split, slot: 1)
             }
             let id = g.add(
-                "SamplerCustomAdvanced",
+                NodeRole(.sampler), "SamplerCustomAdvanced",
                 [
                     "noise": .link(noise, 0), "guider": .link(guider, 0), "sampler": .link(select, 0),
                     "sigmas": sigmas.input, "latent_image": latent.input,
@@ -508,7 +550,7 @@ public enum WorkflowBuilder {
             sampled = Output(node: id, slot: 0)
         } else {
             let id = g.add(
-                "KSampler",
+                NodeRole(.sampler), "KSampler",
                 [
                     "model": model.input, "positive": positive.input, "negative": negative.input,
                     "latent_image": latent.input, "seed": .int(r.seed), "steps": .int(r.steps),
@@ -517,13 +559,16 @@ public enum WorkflowBuilder {
                 ])
             sampled = Output(node: id, slot: 0)
         }
-        var image = Output(node: g.add("VAEDecode", ["samples": sampled.input, "vae": vae.input]), slot: 0)
+        var image = Output(
+            node: g.add(NodeRole(.vaeDecode), "VAEDecode", ["samples": sampled.input, "vae": vae.input]), slot: 0)
 
         // FaceDetailer samples with a KSampler, which Flux 2's schedule doesn't fit.
-        for fix in flux2 ? [] : [r.faceFix, r.handFix].compactMap({ $0 }) {
-            let detector = g.add("UltralyticsDetectorProvider", ["model_name": .string(fix.detector)])
+        let fixes: [(NodeRole.Kind, DetailerRequest?)] = flux2 ? [] : [(.faceFix, r.faceFix), (.handFix, r.handFix)]
+        for case (let kind, let fix?) in fixes {
+            let detector = g.add(
+                NodeRole(kind, .detector), "UltralyticsDetectorProvider", ["model_name": .string(fix.detector)])
             let id = g.add(
-                "FaceDetailer",
+                NodeRole(kind), "FaceDetailer",
                 [
                     "image": image.input, "model": detailModel.input, "clip": clip.input, "vae": vae.input,
                     "positive": textPositive.input, "negative": textNegative.input,
@@ -534,22 +579,27 @@ public enum WorkflowBuilder {
                 ], defaultsFrom: catalog)
             image = Output(node: id, slot: 0)
         }
-        g.add("PreviewImage", ["images": image.input])
-        return g
+        g.add(NodeRole(.output), "PreviewImage", ["images": image.input])
+        return BuiltWorkflow(
+            graph: g.graph, roles: g.roles,
+            anchors: [
+                .model: model, .clip: clip, .vae: vae, .positive: positive, .negative: negative, .latent: latent,
+                .image: image,
+            ])
     }
 
-    static func preprocess(_ g: inout WorkflowGraph, _ image: Output, _ p: Preprocessor, _ catalog: ComfyCatalog)
-        -> Output
-    {
+    static func preprocess(
+        _ g: inout RoleRecorder, _ role: NodeRole, _ image: Output, _ p: Preprocessor, _ catalog: ComfyCatalog
+    ) -> Output {
         switch p {
         case .canny(let low, let high):
             let id = g.add(
-                "Canny", ["image": image.input, "low_threshold": .double(low), "high_threshold": .double(high)])
+                role, "Canny", ["image": image.input, "low_threshold": .double(low), "high_threshold": .double(high)])
             return Output(node: id, slot: 0)
         case .aux(let name, let resolution):
             let node = catalog.auxPreprocessorNode ?? "AIO_Preprocessor"
             let id = g.add(
-                node, ["image": image.input, "preprocessor": .string(name), "resolution": .int(resolution)])
+                role, node, ["image": image.input, "preprocessor": .string(name), "resolution": .int(resolution)])
             return Output(node: id, slot: 0)
         }
     }

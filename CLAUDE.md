@@ -36,6 +36,7 @@ A Swift/SwiftUI app for Mac and iPad that generates pictures with a ComfyUI serv
 
 ## ComfyUI
 - Workflows are built in code (`WorkflowBuilder`), not from JSON templates.
+- `WorkflowBuilder.build` also gives every node a `NodeRole` (`WorkflowRoles.swift`) and the chain ends (`Anchor`) for the node editor; `txt2img` is its graph. `Fixtures/built` holds the API graphs it must keep producing (`builtGraphsStayTheSame`); re-record them with `RECORD_BUILT=1` only when the graph is meant to change.
 - Only use node inputs the server reports in `/object_info`. Unknown linked inputs break older servers. See `ComfyCatalog.controlNetTakesVAE`.
 - Results use `PreviewImage`, which saves to ComfyUI's temp folder; Lightbox keeps its own copy in the gallery.
 - Nodes with many inputs (`FaceDetailer`, `IPAdapterAdvanced`) are added with `defaultsFrom: catalog`. Set only the inputs that matter.
