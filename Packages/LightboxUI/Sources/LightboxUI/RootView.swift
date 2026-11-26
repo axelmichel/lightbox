@@ -59,6 +59,8 @@ struct RootView: View {
                     }
                 }
             }
+            // The picture being made, over whatever the main area shows.
+            .overlay { RenderStatusPanel() }
             .inspector(isPresented: $showGenerate) {
                 GenerateView { showGenerate = false }
                     .inspectorColumnWidth(min: 320, ideal: 380, max: 560)

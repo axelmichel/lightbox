@@ -21,10 +21,8 @@ struct GalleryGridView: View {
     var body: some View {
         let gallery = app.gallery
         let items = gallery.items
-        let generation = app.generation
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: thumbnailSize), spacing: 10)], spacing: 10) {
-                if generation.isRunning { RunningCard().aspectRatio(1, contentMode: .fit) }
                 ForEach(items) { item in
                     ThumbnailCell(item: item, selected: gallery.selection.contains(item.id))
                         .aspectRatio(1, contentMode: .fit)
@@ -44,7 +42,7 @@ struct GalleryGridView: View {
         .overlay {
             if items.isEmpty, gallery.isSearching {
                 ContentUnavailableView.search(text: gallery.search)
-            } else if items.isEmpty, !generation.isRunning {
+            } else if items.isEmpty {
                 ContentUnavailableView(
                     "No Pictures", systemImage: "photo.on.rectangle",
                     description: Text(
@@ -332,38 +330,6 @@ struct ThumbnailCell: View {
         .help(item.recipe.prompt)
         .accessibilityLabel(item.recipe.prompt.isEmpty ? "Picture" : item.recipe.prompt)
         .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
-/// The generation in progress, shown first in the grid.
-struct RunningCard: View {
-    @Environment(AppModel.self) private var app
-
-    var body: some View {
-        let gen = app.generation
-        ZStack {
-            Color.primary.opacity(0.05)
-            if let preview = gen.preview {
-                FittedImage(image: preview).opacity(0.85)
-            }
-            VStack(spacing: 8) {
-                Spacer()
-                if gen.totalSteps > 0, gen.step > 0 {
-                    ProgressView(value: Double(gen.step), total: Double(gen.totalSteps))
-                } else {
-                    ProgressView()
-                }
-                if case .running(let text) = gen.state {
-                    Text(text).font(.caption).lineLimit(2).multilineTextAlignment(.center)
-                }
-            }
-            .padding(10)
-            .background(alignment: .bottom) {
-                LinearGradient(colors: [.clear, .black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(.separator) }
     }
 }
 
