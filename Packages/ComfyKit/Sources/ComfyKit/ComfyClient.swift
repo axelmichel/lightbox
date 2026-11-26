@@ -18,6 +18,9 @@ public enum GenerationEvent: Equatable, Sendable {
     case started
     /// A node started; its class type, e.g. "KSampler" or "FaceDetailer".
     case stage(String)
+    /// The node running now (API id). Only when a graph is run as it is
+    /// (`generate(_ graph:)`), whose ids are the caller's.
+    case node(String)
     case progress(step: Int, total: Int)
     case preview(Data)
     case finished([GeneratedImage])

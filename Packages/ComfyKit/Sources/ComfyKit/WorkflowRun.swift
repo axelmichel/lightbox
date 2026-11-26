@@ -72,6 +72,7 @@ extension ComfyClient {
                                 continuation.yield(.started)
                             }
                             if let type = graph.nodes[node]?.classType { continuation.yield(.stage(type)) }
+                            continuation.yield(.node(node))
                         case .cached: break
                         case .progress(_, let step, let total): continuation.yield(.progress(step: step, total: total))
                         case .preview(let data): continuation.yield(.preview(data))

@@ -96,11 +96,16 @@ func graphRunsOnTheServer() async throws {
     let compiled = try GraphSend.prepare(doc, catalog: c, rating: .mature).get()
     var promptID: String?
     var pictures: [GeneratedImage] = []
+    var running: [String] = []
     for try await event in client.generate(compiled.graph, workflow: doc.json()) {
         if case .queued(let id) = event { promptID = id }
         if case .finished(let images) = event { pictures = images }
+        if case .node(let id) = event { running.append(id) }
     }
     #expect(!pictures.isEmpty)
+    // The running nodes are the graph's own, so the view can mark them.
+    #expect(!running.isEmpty)
+    #expect(running.allSatisfy { compiled.graph.nodes[$0] != nil })
     // The safety terms arrived with the prompt.
     let id = try #require(promptID)
     let (data, _) = try await URLSession.shared.data(from: base.appending(path: "history/\(id)"))
@@ -119,4 +124,37 @@ func graphRunsOnTheServer() async throws {
     #expect(file["workflow"]?["nodes"]?.array?.count == doc.graph.nodes.count)
     #expect(file["prompt"]?.object?.count == compiled.graph.nodes.count)
     #expect(try WorkflowDocument(json: #require(file["workflow"])).roles == doc.roles)
+}
+
+@Test func serverErrorsLandOnTheirNodes() {
+    #expect(GraphSend.viewNode("12") == 12)
+    #expect(GraphSend.viewNode("5:12") == 5)  // inside subgraph node 5
+    #expect(GraphSend.viewNode("x") == nil)
+    let rejected = WorkflowRunError.rejected(
+        message: "Prompt outputs failed validation",
+        nodes: ["4": ["Value not in list: ckpt_name"], "5:2": ["Required input is missing: clip"]])
+    #expect(
+        GraphSend.nodeMessages(rejected) == [4: "Value not in list: ckpt_name", 5: "Required input is missing: clip"])
+    let failed = WorkflowRunError.failed(node: "9", nodeType: "KSampler", message: "out of memory")
+    #expect(GraphSend.nodeMessages(failed) == [9: "out of memory"])
+    #expect(GraphSend.nodeMessages(WorkflowRunError.failed(node: nil, nodeType: nil, message: "x")).isEmpty)
+    #expect(GraphSend.nodeMessages(GraphSend.Problem(message: "no")).isEmpty)
+}
+
+/// A model the server doesn't have: refused, with the message at its loader.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["COMFY_URL"] != nil), .timeLimit(.minutes(1)))
+func serverRefusalsPointAtTheNode() async throws {
+    let c = try catalog()
+    let base = try ComfyServer.normalizedURL(from: ProcessInfo.processInfo.environment["COMFY_URL"]!)
+    var r = request("a lighthouse")
+    r.checkpoint = "not-on-the-server.safetensors"
+    let doc = try graph(r, c)
+    let compiled = try GraphSend.prepare(doc, catalog: c, rating: .mature).get()
+    let loader = try #require(doc.roles.first { $0.value == NodeRole(.checkpoint) }?.key)
+    do {
+        for try await _ in ComfyClient(baseURL: base).generate(compiled.graph) {}
+        Issue.record("should be refused")
+    } catch {
+        #expect(GraphSend.nodeMessages(error)[loader] != nil, "\(error)")
+    }
 }

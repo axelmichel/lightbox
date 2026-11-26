@@ -37,6 +37,28 @@ enum GraphSend {
         return .success(compiled)
     }
 
+    /// The node of the graph view an API id belongs to: "12", or for a node
+    /// inside a subgraph "5:12", the subgraph's node 5.
+    static func viewNode(_ apiID: String) -> Int? {
+        apiID.split(separator: ":").first.flatMap { Int($0) }
+    }
+
+    /// What the server said about which node, by node of the graph view.
+    static func nodeMessages(_ error: Error) -> [Int: String] {
+        guard let error = error as? WorkflowRunError else { return [:] }
+        var out: [Int: String] = [:]
+        switch error {
+        case .rejected(_, let nodes):
+            for (id, messages) in nodes {
+                guard let node = viewNode(id) else { continue }
+                out[node] = ((out[node].map { [$0] } ?? []) + messages).joined(separator: "\n")
+            }
+        case .failed(let id, _, let message):
+            if let node = id.flatMap(viewNode) { out[node] = message }
+        }
+        return out
+    }
+
     /// The graph as run, for the gallery's `workflow-runs/`:
     /// `{"workflow": <UI format>, "prompt": <API format>}`.
     static func runFile(_ doc: WorkflowDocument, _ graph: WorkflowGraph) throws -> Data {

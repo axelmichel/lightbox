@@ -42,7 +42,8 @@ struct NodeGraphView: View {
             switch graph {
             case .success(let state):
                 NodeCanvas(
-                    state: state, catalog: app.catalog, onMove: { keepLayout($0, of: state) },
+                    state: state, catalog: app.catalog, running: app.generation.runningNode,
+                    errors: app.generation.nodeErrors, onMove: { keepLayout($0, of: state) },
                     onEdit: { edit($0, $1, to: $2, in: state) }
                 )
                 .id(canvasID)
@@ -223,6 +224,10 @@ struct NodeCanvas: View {
 
     let state: GenerationModel.GraphState
     let catalog: ComfyCatalog
+    /// The node running now, when generating through the graph.
+    var running: Int?
+    /// What the server said about which node in the last run.
+    var errors: [Int: String] = [:]
     /// The document with nodes moved, once a drag ends.
     var onMove: (WorkflowDocument) -> Void = { _ in }
     /// A widget's new value: node, input, value.
@@ -277,6 +282,22 @@ struct NodeCanvas: View {
                         context.stroke(
                             Path(roundedRect: layout.bounds.insetBy(dx: -3, dy: -3), cornerRadius: 10),
                             with: .color(NodeColors.selection), lineWidth: 2 / shown.scale)
+                    }
+                    if node.id == running {
+                        context.stroke(
+                            Path(roundedRect: layout.bounds.insetBy(dx: -6, dy: -6), cornerRadius: 12),
+                            with: .color(NodeColors.running), lineWidth: 3 / shown.scale)
+                    }
+                    if let message = errors[node.id] {
+                        context.stroke(
+                            Path(roundedRect: layout.bounds.insetBy(dx: -6, dy: -6), cornerRadius: 12),
+                            with: .color(NodeColors.error), lineWidth: 3 / shown.scale)
+                        // The server's words under the node.
+                        context.draw(
+                            Text(message).font(.system(size: 12)).foregroundStyle(NodeColors.error),
+                            in: CGRect(
+                                x: layout.bounds.minX, y: layout.bounds.maxY + 10, width: layout.bounds.width,
+                                height: 120))
                     }
                 }
             }
@@ -532,6 +553,7 @@ enum NodeColors {
     static let widget = Color(hex: 0x222222)
     static let error = Color(hex: 0xFF6E6E)
     static let selection = Color(hex: 0xFFFFFF)
+    static let running = Color(hex: 0x00FF00)
 
     /// ComfyUI's colours for link types.
     static func type(_ type: String) -> Color {

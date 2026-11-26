@@ -983,7 +983,7 @@ public final class ComposeDocument {
                 switch event {
                 case .uploading: editStatus = "Uploading…"
                 case .queued: editStatus = "Waiting in the ComfyUI queue…"
-                case .started, .stage: editStatus = "Starting…"
+                case .started, .stage, .node: editStatus = "Starting…"
                 case .progress(let value, let total): editStatus = "Painting · step \(value) of \(total)"
                 case .preview: break
                 case .finished(let images): result = images.first?.data

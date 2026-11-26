@@ -75,6 +75,10 @@ public final class GenerationModel {
     public private(set) var promptBeforeSuggestion: String?
 
     private var task: Task<Void, Never>?
+    /// The node of the graph view running now, when generating through the graph.
+    public private(set) var runningNode: Int?
+    /// What the server said about which node in the last run through the graph.
+    public private(set) var nodeErrors: [Int: String] = [:]
     /// What the pictures of the running generation record of their workflow.
     private var runRecord: WorkflowRun?
 
@@ -489,6 +493,7 @@ public final class GenerationModel {
         step = 0
         state = .running("Sending…")
         notice = nil
+        nodeErrors = [:]
         task = Task {
             do {
                 for try await event in events {
@@ -496,8 +501,10 @@ public final class GenerationModel {
                 }
                 if isRunning { state = .idle }
             } catch {
+                nodeErrors = GraphSend.nodeMessages(error)
                 fail(AppModel.describe(error))
             }
+            runningNode = nil
             renderingPreview = nil
             task = nil
         }
@@ -550,6 +557,7 @@ public final class GenerationModel {
 
     public func cancel() {
         task?.cancel()
+        runningNode = nil
         state = .idle
         preview = nil
         renderingPreview = nil
@@ -566,6 +574,8 @@ public final class GenerationModel {
         case .stage(let type):
             stage = Self.stageName(type) ?? stage
             state = .running(stage)
+        case .node(let id):
+            runningNode = GraphSend.viewNode(id)
         case .progress(let value, let total):
             step = value
             totalSteps = total
@@ -575,6 +585,7 @@ public final class GenerationModel {
         case .finished(let images):
             finished(images)
             preview = nil
+            runningNode = nil
             state = .idle
         case .cancelled:
             state = .idle
