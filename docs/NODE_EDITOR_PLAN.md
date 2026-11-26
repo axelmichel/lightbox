@@ -253,6 +253,10 @@ Workflows · Live-Vorschau am Knoten · iPad-Touch.
 Bypass (⌘B) für eigene Knoten; die verwalteten bleiben, wie sie sind. „Für ComfyUI exportieren …“ speichert den
 gezeigten Graphen als ComfyUI-Datei; der Export wird wie das Senden vom Content Guard geprüft.
 
+**7.2 Gruppen und Reroutes (vorgezogen).** Gruppen werden gezeichnet, an der Titelleiste mit ihrem Inhalt verschoben,
+mit ⌘G um die Auswahl gelegt, umbenannt und gelöscht (die Knoten bleiben). Links laufen durch ihre nativen Reroutes;
+diese werden vorerst nur gezeigt.
+
 ### Phase 8: Workflow-Presets für neue Engines
 
 Ziel: Ein Modell, das Lightbox nicht kennt, läuft ohne neuen Code, sobald es in ComfyUI einen funktionierenden

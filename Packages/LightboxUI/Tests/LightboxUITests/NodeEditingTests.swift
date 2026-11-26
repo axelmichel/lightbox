@@ -190,3 +190,41 @@ private func builtDoc() throws -> WorkflowDocument {
     #expect(NodeEditing.toggled(.never, [a], in: muted).graph.node(a)?.mode == .always)
     #expect(NodeEditing.toggled(.bypass, [a, b], in: muted).graph.nodes.filter { $0.mode == .bypass }.count == 2)
 }
+
+@Test func groupsMoveWithWhatIsInside() {
+    var d = WorkflowDocument()
+    d.graph.nodes = [
+        GraphNode(id: 1, type: "A", position: CGPoint(x: 50, y: 80), size: CGSize(width: 100, height: 50)),
+        GraphNode(id: 2, type: "B", position: CGPoint(x: 900, y: 80)),
+    ]
+    var r = GraphReroute(id: 1, position: CGPoint(x: 120, y: 200))
+    r.parent = nil
+    d.graph.reroutes = [r]
+    let (grouped, id) = NodeEditing.grouping(d, around: CGRect(x: 50, y: 50, width: 300, height: 200), title: "Look")
+    let group = grouped.graph.groups.first { $0.id == id }!
+    #expect(group.frame == CGRect(x: 40, y: 6, width: 320, height: 254))  // title bar of 33.6 above
+    #expect(NodeEditing.group(at: CGPoint(x: 60, y: 20), in: grouped) == id)
+    #expect(NodeEditing.group(at: CGPoint(x: 60, y: 100), in: grouped) == nil)  // body, not title
+
+    let inside = NodeEditing.groupContents(id, in: grouped)
+    #expect(inside.nodes == [1] && inside.reroutes == [1])
+    let moved = NodeEditing.movedGroup(
+        grouped, id, nodes: inside.nodes, reroutes: inside.reroutes, by: CGSize(width: 10, height: 20))
+    #expect(moved.graph.groups[0].frame.origin == CGPoint(x: 50, y: 26))
+    #expect(moved.graph.node(1)?.position == CGPoint(x: 60, y: 100))
+    #expect(moved.graph.node(2)?.position == CGPoint(x: 900, y: 80))
+    #expect(moved.graph.reroutes[0].position == CGPoint(x: 130, y: 220))
+}
+
+@Test func linksPassThroughTheirReroutes() {
+    var g = NodeGraph()
+    var first = GraphReroute(id: 1, position: CGPoint(x: 10, y: 10))
+    first.parent = nil
+    var second = GraphReroute(id: 2, position: CGPoint(x: 20, y: 20))
+    second.parent = 1
+    g.reroutes = [second, first]
+    var link = GraphLink(id: 1, origin: 1, originSlot: 0, target: 2, targetSlot: 0, type: "IMAGE")
+    #expect(NodeEditing.reroutePoints(link, in: g).isEmpty)
+    link.parentReroute = 2
+    #expect(NodeEditing.reroutePoints(link, in: g) == [CGPoint(x: 10, y: 10), CGPoint(x: 20, y: 20)])
+}

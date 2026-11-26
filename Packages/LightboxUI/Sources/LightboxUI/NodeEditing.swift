@@ -209,3 +209,70 @@ extension NodeEditing {
         return d
     }
 }
+
+// MARK: - Groups and reroutes
+
+extension NodeEditing {
+    /// The height of a group's title bar, as LiteGraph draws it.
+    static func groupTitleHeight(_ group: GraphGroup) -> Double { (group.fontSize ?? 24) * 1.4 }
+
+    /// The group whose title bar is at `point`; the one drawn last is on top.
+    static func group(at point: CGPoint, in doc: WorkflowDocument) -> Int? {
+        doc.graph.groups.last { g in
+            CGRect(x: g.frame.minX, y: g.frame.minY, width: g.frame.width, height: groupTitleHeight(g)).contains(point)
+        }?.id
+    }
+
+    /// What moving a group takes along: the nodes and reroutes inside it.
+    static func groupContents(_ id: Int, in doc: WorkflowDocument) -> (nodes: Set<Int>, reroutes: Set<Int>) {
+        guard let frame = doc.graph.groups.first(where: { $0.id == id })?.frame else { return ([], []) }
+        return (
+            Set(doc.graph.nodes(inside: frame)),
+            Set(doc.graph.reroutes.filter { frame.contains($0.position) }.map(\.id))
+        )
+    }
+
+    /// `doc` with the group, and what it took along, moved by `delta`.
+    static func movedGroup(
+        _ doc: WorkflowDocument, _ id: Int, nodes: Set<Int>, reroutes: Set<Int>, by delta: CGSize
+    ) -> WorkflowDocument {
+        var d = moved(doc, nodes, by: delta)
+        for i in d.graph.groups.indices where d.graph.groups[i].id == id {
+            d.graph.groups[i].frame.origin.x = (d.graph.groups[i].frame.origin.x + delta.width).rounded()
+            d.graph.groups[i].frame.origin.y = (d.graph.groups[i].frame.origin.y + delta.height).rounded()
+        }
+        for i in d.graph.reroutes.indices where reroutes.contains(d.graph.reroutes[i].id) {
+            d.graph.reroutes[i].position.x = (d.graph.reroutes[i].position.x + delta.width).rounded()
+            d.graph.reroutes[i].position.y = (d.graph.reroutes[i].position.y + delta.height).rounded()
+        }
+        return d
+    }
+
+    /// A new group around `bounds` (the selected nodes, title bars
+    /// included), with room for its own title. Returns its id too.
+    static func grouping(_ doc: WorkflowDocument, around bounds: CGRect, title: String) -> (WorkflowDocument, Int) {
+        var d = doc
+        d.graph.lastGroupID = max(d.graph.lastGroupID, d.graph.groups.map(\.id).max() ?? 0) + 1
+        var g = GraphGroup(id: d.graph.lastGroupID, title: title, frame: .zero)
+        let pad = 10.0
+        g.frame =
+            CGRect(
+                x: bounds.minX - pad, y: bounds.minY - pad - groupTitleHeight(g), width: bounds.width + 2 * pad,
+                height: bounds.height + 2 * pad + groupTitleHeight(g)
+            ).integral
+        d.graph.groups.append(g)
+        return (d, g.id)
+    }
+
+    /// The native reroutes a link passes through, from its start to its end.
+    static func reroutePoints(_ link: GraphLink, in g: NodeGraph) -> [CGPoint] {
+        var points: [CGPoint] = []
+        var next = link.parentReroute
+        var seen: Set<Int> = []
+        while let id = next, seen.insert(id).inserted, let r = g.reroutes.first(where: { $0.id == id }) {
+            points.insert(r.position, at: 0)
+            next = r.parent
+        }
+        return points
+    }
+}

@@ -390,6 +390,13 @@ struct NodeCanvas: View {
         var point: CGPoint
     }
 
+    private struct GroupDrag {
+        var id: Int
+        var nodes: Set<Int>
+        var reroutes: Set<Int>
+        var delta = CGSize.zero
+    }
+
     /// Where a node is to be added.
     private struct AddRequest: Identifiable {
         let id = UUID()
@@ -405,6 +412,12 @@ struct NodeCanvas: View {
     /// The widget being edited, over its row.
     @State private var editing: RowEdit.Target?
     @State private var linkDrag: LinkDrag?
+    /// A group being dragged by its title, with what it takes along.
+    @State private var groupDrag: GroupDrag?
+    @State private var selectedGroup: Int?
+    /// A group being renamed, and the name typed.
+    @State private var renamingGroup: Int?
+    @State private var groupTitle = ""
     @State private var adding: AddRequest?
     /// Why something was refused, shown for a moment.
     @State private var hint: String?
@@ -412,7 +425,11 @@ struct NodeCanvas: View {
 
     /// The document as shown: with the nodes being dragged where they are now.
     private var doc: WorkflowDocument {
-        nodeDrag.map { NodeEditing.moved(state.doc, $0.nodes, by: $0.delta) } ?? state.doc
+        if let drag = groupDrag {
+            return NodeEditing.movedGroup(
+                state.doc, drag.id, nodes: drag.nodes, reroutes: drag.reroutes, by: drag.delta)
+        }
+        return nodeDrag.map { NodeEditing.moved(state.doc, $0.nodes, by: $0.delta) } ?? state.doc
     }
 
     /// ⇧ or ⌘ held: a click adds to the selection.
@@ -442,7 +459,16 @@ struct NodeCanvas: View {
                 let seen = CGRect(
                     origin: shown.toCanvas(.zero),
                     size: CGSize(width: size.width / shown.scale, height: size.height / shown.scale))
-                for link in doc.graph.links where link.id != linkDrag?.replacing { draw(link, layouts, in: context) }
+                for group in doc.graph.groups { draw(group, selected: group.id == selectedGroup, in: context) }
+                for link in doc.graph.links where link.id != linkDrag?.replacing {
+                    draw(link, layouts, through: NodeEditing.reroutePoints(link, in: doc.graph), in: context)
+                }
+                for reroute in doc.graph.reroutes {
+                    let p = reroute.position
+                    context.fill(
+                        Path(ellipseIn: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10)),
+                        with: .color(NodeColors.label))
+                }
                 for node in doc.graph.nodes {
                     guard let layout = layouts[node.id], layout.bounds.intersects(seen) else { continue }
                     draw(node, layout, role: roles[node.id], in: context)
@@ -504,12 +530,22 @@ struct NodeCanvas: View {
                                 // Hold the view still while the graph's bounds change.
                                 viewport = shown
                                 nodeDrag = NodeDrag(nodes: NodeEditing.dragged(hit, selection: selection))
+                            } else if let group = NodeEditing.group(at: start, in: doc) {
+                                // A group's title: the group and what is inside it move.
+                                let inside = NodeEditing.groupContents(group, in: doc)
+                                viewport = shown
+                                selectedGroup = group
+                                groupDrag = GroupDrag(id: group, nodes: inside.nodes, reroutes: inside.reroutes)
                             } else {
                                 panStart = shown
                             }
                         }
                         if linkDrag != nil {
                             linkDrag?.point = shown.toCanvas(value.location)
+                        } else if groupDrag != nil {
+                            groupDrag?.delta = CGSize(
+                                width: value.translation.width / shown.scale,
+                                height: value.translation.height / shown.scale)
                         } else if nodeDrag != nil {
                             nodeDrag?.delta = CGSize(
                                 width: value.translation.width / shown.scale,
@@ -521,10 +557,15 @@ struct NodeCanvas: View {
                     .onEnded { _ in
                         if let drag = linkDrag {
                             dropLink(drag, doc, layouts)
+                        } else if let drag = groupDrag, drag.delta != .zero {
+                            onMove(
+                                NodeEditing.movedGroup(
+                                    state.doc, drag.id, nodes: drag.nodes, reroutes: drag.reroutes, by: drag.delta))
                         } else if let drag = nodeDrag, drag.delta != .zero {
                             onMove(NodeEditing.moved(state.doc, drag.nodes, by: drag.delta))
                         }
                         linkDrag = nil
+                        groupDrag = nil
                         nodeDrag = nil
                         panStart = nil
                     }
@@ -536,6 +577,9 @@ struct NodeCanvas: View {
                         let hit = NodeEditing.node(at: point, in: doc.graph.nodes, layouts: layouts)
                         focused = true
                         selection = NodeEditing.select(hit, in: selection, extend: extendsSelection)
+                        // A group is selected by its title, alone.
+                        selectedGroup = hit == nil ? NodeEditing.group(at: point, in: doc) : nil
+                        if selectedGroup != nil { selection = [] }
                         if let hit, let node = doc.graph.node(hit), let layout = layouts[hit] {
                             editing = RowEdit.target(node, layout, role: roles[hit], at: point, catalog: catalog)
                         }
@@ -545,7 +589,11 @@ struct NodeCanvas: View {
                 SpatialTapGesture(count: 2)
                     .onEnded { tap in
                         let point = shown.toCanvas(tap.location)
-                        if NodeEditing.node(at: point, in: doc.graph.nodes, layouts: layouts) == nil {
+                        guard NodeEditing.node(at: point, in: doc.graph.nodes, layouts: layouts) == nil else { return }
+                        if let group = NodeEditing.group(at: point, in: doc) {
+                            groupTitle = doc.graph.groups.first { $0.id == group }?.title ?? ""
+                            renamingGroup = group
+                        } else {
                             adding = AddRequest(point: point)
                         }
                     }
@@ -578,7 +626,13 @@ struct NodeCanvas: View {
             .focusEffectDisabled()
             .focused($focused)
             #if os(macOS)
-                .onDeleteCommand { deleteSelection(doc) }
+                .onDeleteCommand {
+                    if let group = selectedGroup, selection.isEmpty {
+                        deleteGroup(group, doc)
+                    } else {
+                        deleteSelection(doc)
+                    }
+                }
                 .onCopyCommand { copySelection(doc) }
                 .onPasteCommand(of: [.json, .plainText, .utf8PlainText]) { providers in paste(providers, into: doc) }
             #endif
@@ -586,13 +640,14 @@ struct NodeCanvas: View {
                 // ⌘D duplicates; ⌃M mutes and ⌃B bypasses, as in ComfyUI (⌘M minimizes the window).
                 switch (press.characters.lowercased(), press.modifiers) {
                 case ("d", .command): duplicateSelection(doc)
+                case ("g", .command): groupSelection(doc, layouts)
                 case ("m", .control): mode(.never, doc)
                 case ("b", .control): mode(.bypass, doc)
                 default: return .ignored
                 }
                 return .handled
             }
-            .overlay(alignment: .bottomTrailing) { controls(shown, size: size, doc: doc) }
+            .overlay(alignment: .bottomTrailing) { controls(shown, size: size, doc: doc, layouts: layouts) }
             .overlay(alignment: .top) {
                 if let hint {
                     Text(hint)
@@ -607,6 +662,14 @@ struct NodeCanvas: View {
                             withAnimation { self.hint = nil }
                         }
                 }
+            }
+            .alert(
+                "Rename the Group",
+                isPresented: Binding(get: { renamingGroup != nil }, set: { if !$0 { renamingGroup = nil } })
+            ) {
+                TextField("Title", text: $groupTitle)
+                Button("Rename") { renameGroup(doc) }.keyboardShortcut(.defaultAction)
+                Button("Cancel", role: .cancel) {}
             }
             .sheet(item: $adding) { request in
                 NodePicker(catalog: catalog) { type in
@@ -635,7 +698,9 @@ struct NodeCanvas: View {
         }
     }
 
-    private func controls(_ shown: NodeViewport, size: CGSize, doc: WorkflowDocument) -> some View {
+    private func controls(
+        _ shown: NodeViewport, size: CGSize, doc: WorkflowDocument, layouts: [Int: NodeLayout]
+    ) -> some View {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         return HStack(spacing: 2) {
             Button("Add Node", systemImage: "plus") { adding = AddRequest(point: shown.toCanvas(center)) }
@@ -647,11 +712,13 @@ struct NodeCanvas: View {
                 Button("Duplicate", systemImage: "plus.square.on.square") { duplicateSelection(doc) }
                 Button("Mute", systemImage: "speaker.slash") { mode(.never, doc) }
                 Button("Bypass", systemImage: "arrow.uturn.forward") { mode(.bypass, doc) }
+                Divider()
+                Button("Group", systemImage: "rectangle.dashed") { groupSelection(doc, layouts) }
             }
             .menuIndicator(.hidden)
             .fixedSize()
-            .disabled(NodeEditing.ownNodes(selection, in: doc).isEmpty)
-            .help("Duplicate (⌘D), mute (⌃M) or bypass (⌃B) the selected nodes you added")
+            .disabled(selection.isEmpty)
+            .help("Duplicate (⌘D), mute (⌃M), bypass (⌃B) or group (⌘G) the selected nodes")
             Divider().frame(height: 16)
             Button("Zoom Out", systemImage: "minus.magnifyingglass") {
                 viewport = shown.zoomed(by: 1 / 1.25, around: center)
@@ -673,12 +740,61 @@ struct NodeCanvas: View {
         .padding(12)
     }
 
-    private func draw(_ link: GraphLink, _ layouts: [Int: NodeLayout], in context: GraphicsContext) {
+    /// A link, through its reroutes if it has any.
+    private func draw(
+        _ link: GraphLink, _ layouts: [Int: NodeLayout], through reroutes: [CGPoint], in context: GraphicsContext
+    ) {
         guard let from = layouts[link.origin]?.outputPoints, from.indices.contains(link.originSlot),
             let to = layouts[link.target]?.inputPoints, to.indices.contains(link.targetSlot)
         else { return }
-        context.stroke(
-            curve(from[link.originSlot], to[link.targetSlot]), with: .color(NodeColors.type(link.type)), lineWidth: 3)
+        let points = [from[link.originSlot]] + reroutes + [to[link.targetSlot]]
+        for (a, b) in zip(points, points.dropFirst()) {
+            context.stroke(curve(a, b), with: .color(NodeColors.type(link.type)), lineWidth: 3)
+        }
+    }
+
+    /// A group: a tinted frame with its title, behind the nodes.
+    private func draw(_ group: GraphGroup, selected: Bool, in context: GraphicsContext) {
+        let color = NodeColors.group(group.color)
+        let frame = Path(roundedRect: group.frame, cornerRadius: 6)
+        context.fill(frame, with: .color(color.opacity(0.22)))
+        context.stroke(frame, with: .color(selected ? NodeColors.selection : color.opacity(0.6)), lineWidth: 2)
+        let size = group.fontSize ?? 24
+        context.draw(
+            Text(group.title).font(.system(size: size)).foregroundStyle(NodeColors.text),
+            at: CGPoint(x: group.frame.minX + 10, y: group.frame.minY + NodeEditing.groupTitleHeight(group) / 2),
+            anchor: .leading)
+    }
+
+    /// A group around the selected nodes, to be named.
+    private func groupSelection(_ doc: WorkflowDocument, _ layouts: [Int: NodeLayout]) {
+        let bounds = selection.compactMap { layouts[$0]?.bounds }.reduce(CGRect.null) { $0.union($1) }
+        guard !bounds.isNull else { return }
+        let (changed, id) = NodeEditing.grouping(doc, around: bounds, title: "Group")
+        onStructure(.document(changed, name: "Group Nodes"))
+        selection = []
+        selectedGroup = id
+        groupTitle = "Group"
+        renamingGroup = id
+    }
+
+    private func renameGroup(_ doc: WorkflowDocument) {
+        guard let id = renamingGroup else { return }
+        let title = groupTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        var changed = doc
+        for i in changed.graph.groups.indices where changed.graph.groups[i].id == id && !title.isEmpty {
+            changed.graph.groups[i].title = title
+        }
+        onStructure(.document(changed, name: "Rename Group"))
+        renamingGroup = nil
+    }
+
+    /// The group goes; its nodes stay.
+    private func deleteGroup(_ id: Int, _ doc: WorkflowDocument) {
+        var changed = doc
+        changed.graph.groups.removeAll { $0.id == id }
+        onStructure(.document(changed, name: "Delete Group"))
+        selectedGroup = nil
     }
 
     /// LiteGraph's curve: handles a quarter of the distance long, level.
@@ -916,6 +1032,15 @@ enum NodeColors {
     static let selection = Color(hex: 0xFFFFFF)
     static let running = Color(hex: 0x00FF00)
     static let bypass = Color(hex: 0x9F40FF)
+
+    /// A group's colour as ComfyUI stores it ("#3f789e", "#a1309b", …).
+    static func group(_ hex: String?) -> Color {
+        var s = (hex ?? "#3f789e").trimmingCharacters(in: .whitespaces)
+        if s.hasPrefix("#") { s.removeFirst() }
+        if s.count == 3 { s = s.map { "\($0)\($0)" }.joined() }
+        guard s.count == 6, let v = UInt32(s, radix: 16) else { return Color(hex: 0x3F789E) }
+        return Color(hex: v)
+    }
 
     /// ComfyUI's colours for link types.
     static func type(_ type: String) -> Color {
