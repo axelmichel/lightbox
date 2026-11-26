@@ -368,7 +368,9 @@ struct PresetEditor: View {
                     app.setPresetPicture(id, image: data)
                 }
             }
-            .sheet(isPresented: $showLoraInfo) { LorasView(start: preset.loras.first?.name) }
+            .sheet(isPresented: $showLoraInfo) {
+                LorasView(start: preset.loras.first?.name, family: preset.family)
+            }
             .sheet(isPresented: $addingLora) {
                 LorasView(
                     pick: { name in

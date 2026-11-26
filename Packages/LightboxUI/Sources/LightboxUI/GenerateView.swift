@@ -171,7 +171,7 @@ struct GenerateView: View {
         }
         .formStyle(.grouped)
         .safeAreaInset(edge: .top, spacing: 0) { header }
-        .sheet(isPresented: $showLoraInfo) { LorasView() }
+        .sheet(isPresented: $showLoraInfo) { LorasView(family: gen.preset(in: app.library)?.family) }
         .sheet(isPresented: $addingLora) {
             LorasView(
                 pick: { name in
