@@ -72,11 +72,9 @@ struct SidebarView: View {
         .safeAreaInset(edge: .bottom) {
             HStack {
                 Button("New Folder", systemImage: "folder.badge.plus") {
-                    // Inside the folder shown, if one is.
+                    // Inside the folder shown, if one is; renamed from its menu.
                     let folder = gallery.addFolder(named: "New Folder", in: gallery.filter.folderID)
                     gallery.filter = .folder(folder.id)
-                    newName = folder.name
-                    renaming = folder
                 }
                 .buttonStyle(.borderless)
                 Spacer()
@@ -182,6 +180,12 @@ struct SidebarView: View {
     }
 
     private func row(_ title: String, _ icon: String, _ filter: GalleryFilter, count: Int) -> some View {
+        rowLabel(title, icon, count: count)
+            .tag(SidebarItem.pictures(filter))
+            .dropDestination(for: String.self) { payload, _ in drop(payload, on: filter) }
+    }
+
+    private func rowLabel(_ title: String, _ icon: String, count: Int) -> some View {
         Label {
             HStack {
                 Text(title).lineLimit(1)
@@ -191,33 +195,51 @@ struct SidebarView: View {
         } icon: {
             Image(systemName: icon)
         }
-        .tag(SidebarItem.pictures(filter))
-        .dropDestination(for: String.self) { payload, _ in drop(payload, on: filter) }
     }
 
+    /// A folder: a folder dropped on its upper or lower edge goes before or
+    /// after it, in the middle inside it; pictures go into it.
     private func folderRow(_ folder: GalleryFolder) -> some View {
         let gallery = app.gallery
-        return row(folder.name, "folder", .folder(folder.id), count: gallery.index.count(.folder(folder.id)))
-            .draggable("folder:\(folder.id.uuidString)")
-            .contextMenu {
-                Button("New Folder Inside", systemImage: "folder.badge.plus") {
-                    let inner = gallery.addFolder(named: "New Folder", in: folder.id)
-                    gallery.filter = .folder(inner.id)
-                    newName = inner.name
-                    renaming = inner
-                }
-                Button("Rename…", systemImage: "pencil") {
-                    newName = folder.name
-                    renaming = folder
-                }
-                if folder.parentID != nil {
-                    Button("Move to the Top", systemImage: "arrow.up.to.line") {
-                        gallery.moveFolder(folder.id, into: nil)
-                    }
-                }
-                Divider()
-                Button("Delete Folder…", systemImage: "trash", role: .destructive) { removing = folder }
+        return FolderDropRow { zone, payload in
+            drop(payload, on: folder.id, zone)
+        } label: {
+            rowLabel(folder.name, "folder", count: gallery.index.count(.folder(folder.id)))
+        }
+        .tag(SidebarItem.pictures(.folder(folder.id)))
+        .draggable("folder:\(folder.id.uuidString)")
+        .contextMenu {
+            Button("New Folder Inside", systemImage: "folder.badge.plus") {
+                let inner = gallery.addFolder(named: "New Folder", in: folder.id)
+                gallery.filter = .folder(inner.id)
             }
+            Button("Rename…", systemImage: "pencil") {
+                newName = folder.name
+                renaming = folder
+            }
+            if folder.parentID != nil {
+                Button("Move to the Top", systemImage: "arrow.up.to.line") {
+                    gallery.moveFolder(folder.id, into: nil)
+                }
+            }
+            Divider()
+            Button("Delete Folder…", systemImage: "trash", role: .destructive) { removing = folder }
+        }
+    }
+
+    private func drop(_ payload: [String], on target: UUID, _ zone: FolderDropZone) {
+        let folders = payload.flatMap { $0.split(separator: "\n") }
+            .compactMap { $0.hasPrefix("folder:") ? UUID(uuidString: String($0.dropFirst(7))) : nil }
+        guard zone != .inside, !folders.isEmpty else {
+            _ = drop(payload, on: .folder(target))
+            return
+        }
+        // Several in a row: each after the one placed before it.
+        var next = target
+        for (i, id) in folders.enumerated() {
+            app.gallery.placeFolder(id, next: next, after: zone == .after || i > 0)
+            next = id
+        }
     }
 
     /// Pictures dropped on a folder move there, on a tag get it; a folder
@@ -257,6 +279,71 @@ private struct FolderNode: Identifiable {
         index.children(of: parent).map { f in
             let inner = tree(index, in: f.id)
             return FolderNode(folder: f, children: inner.isEmpty ? nil : inner)
+        }
+    }
+}
+
+/// Where on a folder's row something was dropped.
+private enum FolderDropZone {
+    case before, inside, after
+}
+
+/// A sidebar row that tells where on it something was dropped: its upper
+/// quarter, its lower quarter, or the middle. A line shows the edge.
+private struct FolderDropRow<Label: View>: View {
+    typealias Zone = FolderDropZone
+
+    let onDrop: @MainActor ([String], Zone) -> Void
+    @ViewBuilder let label: Label
+    @State private var zone: Zone?
+    @State private var height = 24.0
+
+    init(onDrop: @escaping @MainActor (Zone, [String]) -> Void, @ViewBuilder label: () -> Label) {
+        self.onDrop = { payload, zone in onDrop(zone, payload) }
+        self.label = label()
+    }
+
+    var body: some View {
+        label
+            .onGeometryChange(for: CGFloat.self, of: \.size.height) { height = $0 }
+            .onDrop(of: [.text], delegate: Delegate(height: height, zone: $zone, onDrop: onDrop))
+            .overlay(alignment: zone == .after ? .bottom : .top) {
+                if zone == .before || zone == .after {
+                    Rectangle().fill(Color.accentColor).frame(height: 2).offset(y: zone == .after ? 3 : -3)
+                }
+            }
+            .background {
+                if zone == .inside { RoundedRectangle(cornerRadius: 5).fill(Color.accentColor.opacity(0.2)) }
+            }
+    }
+
+    private struct Delegate: DropDelegate {
+        let height: Double
+        @Binding var zone: Zone?
+        let onDrop: @MainActor ([String], Zone) -> Void
+
+        func zone(at y: Double) -> Zone {
+            y < height * 0.25 ? .before : y > height * 0.75 ? .after : .inside
+        }
+
+        func dropUpdated(info: DropInfo) -> DropProposal? {
+            zone = zone(at: info.location.y)
+            return DropProposal(operation: .move)
+        }
+
+        func dropExited(info: DropInfo) { zone = nil }
+
+        func performDrop(info: DropInfo) -> Bool {
+            let at = zone(at: info.location.y)
+            zone = nil
+            let providers = info.itemProviders(for: [.text])
+            for provider in providers {
+                _ = provider.loadObject(ofClass: String.self) { text, _ in
+                    guard let text else { return }
+                    Task { @MainActor in onDrop([text], at) }
+                }
+            }
+            return !providers.isEmpty
         }
     }
 }

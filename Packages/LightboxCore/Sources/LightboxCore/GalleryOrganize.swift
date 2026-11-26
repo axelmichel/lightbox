@@ -5,10 +5,48 @@ import Foundation
 // MARK: - Nested folders
 
 extension GalleryIndex {
-    /// The folders directly in `parentID` (`nil` = at the top), by name.
+    /// The folders directly in `parentID` (`nil` = at the top): as sorted
+    /// by hand, then the others by name.
     public func children(of parentID: UUID?) -> [GalleryFolder] {
-        folders.filter { $0.parentID == parentID }
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        folders.filter { $0.parentID == parentID }.sorted { a, b in
+            if a.order != b.order { return (a.order ?? .max) < (b.order ?? .max) }
+            return a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
+    }
+
+    /// Put folder `id` next to `target`, before or after it, in the folder
+    /// `target` is in. The folders there keep their order from then on.
+    /// Refused into the folder itself or one inside it. Returns whether
+    /// anything changed.
+    @discardableResult
+    public mutating func placeFolder(_ id: UUID, next target: UUID, after: Bool) -> Bool {
+        guard id != target, let moving = folder(id), let next = folder(target) else { return false }
+        let parent = next.parentID
+        if let parent, descendants(of: id).contains(parent) { return false }
+        var siblings = children(of: parent).filter { $0.id != id }
+        guard let at = siblings.firstIndex(where: { $0.id == target }) else { return false }
+        var placed = moving
+        placed.parentID = parent
+        siblings.insert(placed, at: after ? at + 1 : at)
+        let before = folders
+        for (n, f) in siblings.enumerated() {
+            guard let i = folders.firstIndex(where: { $0.id == f.id }) else { continue }
+            folders[i].parentID = parent
+            folders[i].order = n
+        }
+        return folders != before
+    }
+
+    /// `items` by folder, in the sidebar's order: those in no folder first,
+    /// then each folder (folders inside others after them). Empty groups are
+    /// left out; each group keeps the order of `items`.
+    public func grouped(_ items: [GalleryItem]) -> [(folder: GalleryFolder?, items: [GalleryItem])] {
+        let byFolder = Dictionary(grouping: items, by: \.folderID)
+        let order: [GalleryFolder?] = [nil] + folderTree.map(\.folder)
+        return order.compactMap { f in
+            guard let inside = byFolder[f?.id], !inside.isEmpty else { return nil }
+            return (f, inside)
+        }
     }
 
     /// The folder and all folders inside it, at any depth.

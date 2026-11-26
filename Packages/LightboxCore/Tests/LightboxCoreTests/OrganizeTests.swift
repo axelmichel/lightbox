@@ -97,3 +97,49 @@ private func item(_ prompt: String, folder: UUID? = nil, tags: [String]? = nil) 
     let old = try JSONDecoder.gallery.decode(GalleryIndex.self, from: JSONSerialization.data(withJSONObject: json))
     #expect(old.folders[0].parentID == nil && old.items[0].tags == nil)
 }
+
+@Test func foldersCanBeSortedByHand() {
+    var index = GalleryIndex()
+    let trips = index.addFolder(named: "Trips")
+    let art = index.addFolder(named: "Art")
+    let cats = index.addFolder(named: "Cats")
+    #expect(index.children(of: nil).map(\.name) == ["Art", "Cats", "Trips"])  // by name at first
+    let placed1 = index.placeFolder(trips.id, next: art.id, after: false)
+    #expect(placed1)
+    #expect(index.children(of: nil).map(\.name) == ["Trips", "Art", "Cats"])
+    let placed2 = index.placeFolder(trips.id, next: cats.id, after: true)
+    #expect(placed2)
+    #expect(index.children(of: nil).map(\.name) == ["Art", "Cats", "Trips"])
+    // Where it already is: nothing changes.
+    let placed3 = index.placeFolder(trips.id, next: cats.id, after: true)
+    #expect(!placed3)
+    // A new folder goes after the sorted ones.
+    _ = index.addFolder(named: "Animals")
+    #expect(index.children(of: nil).map(\.name) == ["Art", "Cats", "Trips", "Animals"])
+
+    // Next to a folder inside another: moved in there.
+    let lisbon = index.addFolder(named: "Lisbon", in: trips.id)
+    let placed4 = index.placeFolder(cats.id, next: lisbon.id, after: true)
+    #expect(placed4)
+    #expect(index.children(of: trips.id).map(\.name) == ["Lisbon", "Cats"])
+    // Never into itself.
+    let placed5 = index.placeFolder(trips.id, next: lisbon.id, after: false)
+    #expect(!placed5)
+    let placed6 = index.placeFolder(trips.id, next: trips.id, after: false)
+    #expect(!placed6)
+}
+
+@Test func picturesGroupByFolderInSidebarOrder() throws {
+    var index = GalleryIndex()
+    let trips = index.addFolder(named: "Trips")
+    let lisbon = index.addFolder(named: "Lisbon", in: trips.id)
+    let art = index.addFolder(named: "Art")
+    _ = index.addFolder(named: "Empty")
+    let pictures = [
+        try item("a tram", folder: lisbon.id), try item("loose"), try item("a sketch", folder: art.id),
+        try item("a beach", folder: trips.id), try item("a bridge", folder: lisbon.id),
+    ]
+    let groups = index.grouped(pictures)
+    #expect(groups.map { $0.folder?.name } == [nil, "Art", "Trips", "Lisbon"])
+    #expect(groups.last?.items.map(\.id) == [pictures[0].id, pictures[4].id])
+}

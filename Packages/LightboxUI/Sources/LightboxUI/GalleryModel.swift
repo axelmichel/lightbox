@@ -142,6 +142,14 @@ public final class GalleryModel {
         return moved
     }
 
+    /// Put a folder before or after another, in that one's folder.
+    @discardableResult
+    public func placeFolder(_ id: UUID, next target: UUID, after: Bool) -> Bool {
+        var placed = false
+        change { placed = $0.placeFolder(id, next: target, after: after) }
+        return placed
+    }
+
     // MARK: - Tags
 
     public func addTag(_ tag: String, to ids: Set<UUID>) {

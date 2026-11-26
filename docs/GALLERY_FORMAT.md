@@ -22,7 +22,7 @@ Gallery/
 ```json
 {
   "version": 1,
-  "folders": [{ "id": "…", "name": "Foxes", "created": "2026-11-24T16:00:00Z", "parentID": "…" }],
+  "folders": [{ "id": "…", "name": "Foxes", "created": "2026-11-24T16:00:00Z", "parentID": "…", "order": 0 }],
   "items": [
     {
       "id": "…",
@@ -42,7 +42,7 @@ Gallery/
 ```
 
 - `items` is newest first. `folderID` is missing for pictures in no folder.
-- Folders are a field of each picture, so moving a picture changes only the index. A folder's `parentID` is the folder it is in (missing = at the top); a folder is never inside itself. Deleting a folder moves its pictures and folders into its parent (or to the top).
+- Folders are a field of each picture, so moving a picture changes only the index. A folder's `parentID` is the folder it is in (missing = at the top); a folder is never inside itself. `order` (optional) is its place among the folders next to it once they were sorted by hand; folders without one come after those, by name. Deleting a folder moves its pictures and folders into its parent (or to the top).
 - `tags` (optional) are words to find and group pictures by. Tags that differ only in case are the same tag.
 - `source` and `edge` are set only for cut-outs (*Remove Background*): the picture it was cut from, and how tightly (0 soft … 1 tight). A cut-out has the same recipe as its original.
 - `composition` is set only for a flattened composition (*Save to Gallery* in the editor): the composition to edit again. Its recipe is the bottom layer's that has one.

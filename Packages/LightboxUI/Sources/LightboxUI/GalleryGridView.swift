@@ -16,25 +16,33 @@ struct GalleryGridView: View {
     @State private var newFolderName = ""
     @State private var tagging: Set<UUID>?
     @AppStorage(PanelKeys.generate) private var showGenerate = true
+    /// All Pictures in sections, one per folder.
+    @AppStorage("galleryGroupByFolder") private var groupByFolder = false
     @FocusState private var searchFocused: Bool
+
+    /// Sections per folder: only for All Pictures, where folders mix.
+    private var grouping: Bool { groupByFolder && app.gallery.filter == .all }
 
     var body: some View {
         let gallery = app.gallery
-        let items = gallery.items
+        let groups = grouping ? gallery.index.grouped(gallery.items) : []
+        // In the order shown, so ⇧-click selects what lies between.
+        let items = grouping ? groups.flatMap(\.items) : gallery.items
         ScrollView {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: thumbnailSize), spacing: 10)], spacing: 10) {
-                ForEach(items) { item in
-                    ThumbnailCell(item: item, selected: gallery.selection.contains(item.id))
-                        .aspectRatio(1, contentMode: .fit)
-                        .contentShape(Rectangle())
-                        #if os(macOS)
-                            .onTapGesture(count: 2) { gallery.open(item.id) }
-                            .onTapGesture { select(item.id, in: items) }
-                        #else
-                            .onTapGesture { gallery.open(item.id) }
-                        #endif
-                        .contextMenu { menu(for: item) }
-                        .draggable(gallery.targets(for: item.id).map(\.uuidString).joined(separator: "\n"))
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: thumbnailSize), spacing: 10)], spacing: 10,
+                pinnedViews: [.sectionHeaders]
+            ) {
+                if grouping {
+                    ForEach(groups, id: \.folder?.id) { group in
+                        Section {
+                            ForEach(group.items) { cell($0, in: items) }
+                        } header: {
+                            sectionHeader(group.folder, count: group.items.count)
+                        }
+                    }
+                } else {
+                    ForEach(items) { cell($0, in: items) }
                 }
             }
             .padding()
@@ -104,6 +112,12 @@ struct GalleryGridView: View {
             )
             .font(.caption).foregroundStyle(.secondary)
             .fixedSize()
+            if app.gallery.filter == .all {
+                Toggle("By Folder", systemImage: "folder", isOn: $groupByFolder)
+                    .toggleStyle(.button)
+                    .controlSize(.small)
+                    .help(groupByFolder ? "One list of all pictures" : "A section for each folder")
+            }
             Spacer()
             Button("Edit", systemImage: "square.3.layers.3d") { app.compositions.edit(Array(app.gallery.selection)) }
                 .controlSize(.small)
@@ -270,6 +284,36 @@ struct GalleryGridView: View {
         ) {
             deleting = targets
         }
+    }
+
+    private func cell(_ item: GalleryItem, in items: [GalleryItem]) -> some View {
+        let gallery = app.gallery
+        return ThumbnailCell(item: item, selected: gallery.selection.contains(item.id))
+            .aspectRatio(1, contentMode: .fit)
+            .contentShape(Rectangle())
+            #if os(macOS)
+                .onTapGesture(count: 2) { gallery.open(item.id) }
+                .onTapGesture { select(item.id, in: items) }
+            #else
+                .onTapGesture { gallery.open(item.id) }
+            #endif
+            .contextMenu { menu(for: item) }
+            .draggable(gallery.targets(for: item.id).map(\.uuidString).joined(separator: "\n"))
+    }
+
+    /// A folder's section when grouping: its path and how many pictures.
+    private func sectionHeader(_ folder: GalleryFolder?, count: Int) -> some View {
+        HStack {
+            Label(
+                folder.map { app.gallery.index.path(of: $0.id) } ?? "Not in a Folder",
+                systemImage: folder == nil ? "tray" : "folder")
+            Text("\(count)").foregroundStyle(.secondary).monospacedDigit()
+            Spacer()
+        }
+        .font(.headline)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .background(.bar)
     }
 
     private func select(_ id: UUID, in items: [GalleryItem]) {

@@ -22,12 +22,16 @@ public struct GalleryFolder: Codable, Hashable, Identifiable, Sendable {
     public var created: Date
     /// The folder it is in; `nil` = at the top.
     public var parentID: UUID?
+    /// Its place among the folders next to it, once they were sorted by
+    /// hand; `nil` = after those, by name.
+    public var order: Int?
 
-    public init(id: UUID = UUID(), name: String, created: Date = Date(), parentID: UUID? = nil) {
+    public init(id: UUID = UUID(), name: String, created: Date = Date(), parentID: UUID? = nil, order: Int? = nil) {
         self.id = id
         self.name = name
         self.created = created
         self.parentID = parentID
+        self.order = order
     }
 }
 
@@ -127,7 +131,9 @@ public struct GalleryIndex: Codable, Hashable, Sendable {
             unique = "\(base) \(n)"
             n += 1
         }
-        let folder = GalleryFolder(name: unique, parentID: parent)
+        // Last among folders sorted by hand.
+        let order = folders.filter { $0.parentID == parent }.compactMap(\.order).max().map { $0 + 1 }
+        let folder = GalleryFolder(name: unique, parentID: parent, order: order)
         folders.append(folder)
         return folder
     }
