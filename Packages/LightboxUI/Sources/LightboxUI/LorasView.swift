@@ -174,10 +174,11 @@ private struct LoraListRow: View {
     }
 }
 
-/// A LoRA's picture, or its symbol while it has none.
+/// A LoRA's (or a preset's) picture, or a symbol while it has none.
 struct LoraThumbnail: View {
     let image: CGImage?
     var size = 40.0
+    var symbol = LoraInfoIcon.name
 
     var body: some View {
         ZStack {
@@ -185,7 +186,7 @@ struct LoraThumbnail: View {
             if let image {
                 Image(decorative: image, scale: 1).resizable().scaledToFill()
             } else {
-                Image(systemName: LoraInfoIcon.name).foregroundStyle(.tertiary)
+                Image(systemName: symbol).foregroundStyle(.tertiary)
             }
         }
         .frame(width: size, height: size)

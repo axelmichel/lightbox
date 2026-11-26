@@ -3,8 +3,13 @@ import LightboxCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Create, detect, import and edit presets.
+/// Create, detect, import and edit presets. With `pick` it is also where
+/// the preset to generate with is chosen, as LoRAs are in `LorasView`.
 struct PresetsView: View {
+    /// The preset to show first.
+    var start: UUID?
+    /// Choosing a preset: called with the one picked.
+    var pick: ((UUID) -> Void)?
     @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var selection: UUID?
@@ -18,11 +23,18 @@ struct PresetsView: View {
         NavigationSplitView {
             List(selection: $selection) {
                 ForEach(app.library.presets) { p in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(p.name).lineLimit(1)
-                        Text("\(p.style.label) · \(p.family.label)").font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 8) {
+                        LoraThumbnail(image: app.presetPicture(p.id), size: 40, symbol: "slider.horizontal.3")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.name).lineLimit(1)
+                            Text("\(p.style.label) · \(p.family.label)").font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     .tag(p.id)
+                    #if os(macOS)
+                        .onTapGesture(count: 2) { if pick != nil { use(p.id) } }
+                        .simultaneousGesture(TapGesture().onEnded { selection = p.id })
+                    #endif
                     .contextMenu {
                         Button("Duplicate", systemImage: "plus.square.on.square") { duplicate(p) }
                         Button("Delete", systemImage: "trash", role: .destructive) { delete(p.id) }
@@ -63,17 +75,26 @@ struct PresetsView: View {
             }
         } detail: {
             if let selection, app.library.presets.contains(where: { $0.id == selection }) {
-                PresetEditor(id: selection)
+                PresetEditor(id: selection, use: pick == nil ? nil : { use(selection) }).id(selection)
             } else {
                 ContentUnavailableView(
                     "No Preset Selected", systemImage: "slider.horizontal.3",
                     description: Text("Add one with + — Lightbox looks at the checkpoint and suggests its settings."))
             }
         }
+        .navigationTitle(pick == nil ? "Presets" : "Choose a Preset")
         .toolbar {
-            ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            if pick != nil {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Use This Preset") { if let selection { use(selection) } }
+                        .disabled(selection == nil)
+                }
+            } else {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
         }
-        .onAppear { selection = selection ?? app.generation.preset(in: app.library)?.id }
+        .onAppear { selection = selection ?? start ?? app.generation.preset(in: app.library)?.id }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
             switch result {
             case .success(let url):
@@ -140,10 +161,17 @@ struct PresetsView: View {
         selection = preset.id
     }
 
+    private func use(_ id: UUID) {
+        pick?(id)
+        dismiss()
+    }
+
     private func duplicate(_ p: GenerationPreset) {
         var copy = p
         copy.id = UUID()
         copy.name += " copy"
+        // Its own picture, so removing one doesn't remove the other's.
+        copy.picture = nil
         app.library.presets.append(copy)
         selection = copy.id
     }
@@ -159,6 +187,7 @@ struct PresetsView: View {
 
     private func remove(_ id: UUID, keepWorkflows: Bool) {
         app.workflows.presetDeleted(id, keepWorkflows: keepWorkflows)
+        app.removePresetPicture(id)
         app.library.presets.removeAll { $0.id == id }
         if selection == id { selection = app.library.presets.first?.id }
     }
@@ -167,9 +196,13 @@ struct PresetsView: View {
 /// All settings of one preset.
 struct PresetEditor: View {
     let id: UUID
+    /// Choosing: uses this preset and closes.
+    var use: (() -> Void)?
     @Environment(AppModel.self) private var app
     @State private var addingLora = false
     @State private var showLoraInfo = false
+    @State private var choosingFromGallery = false
+    @State private var choosingFile = false
 
     var body: some View {
         @Bindable var app = app
@@ -177,6 +210,13 @@ struct PresetEditor: View {
             let p = $app.library.presets[i]
             let preset = app.library.presets[i]
             Form {
+                if let use {
+                    Section {
+                        Button("Use This Preset", systemImage: "checkmark.circle", action: use)
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+                pictureSection(preset)
                 Section {
                     TextField("Name", text: p.name)
                     if preset.family.isSplit {
@@ -302,6 +342,18 @@ struct PresetEditor: View {
             }
             .formStyle(.grouped)
             .navigationTitle(preset.name)
+            .sheet(isPresented: $choosingFromGallery) {
+                PicturePicker(single: true) { ids in
+                    if let first = ids.first, let png = app.gallery.pngData(first) {
+                        app.setPresetPicture(id, image: png)
+                    }
+                }
+            }
+            .fileImporter(isPresented: $choosingFile, allowedContentTypes: [.image]) { result in
+                if case .success(let url) = result, let data = try? readPickedFile(url) {
+                    app.setPresetPicture(id, image: data)
+                }
+            }
             .sheet(isPresented: $showLoraInfo) { LorasView(start: preset.loras.first?.name) }
             .sheet(isPresented: $addingLora) {
                 LorasView(
@@ -313,6 +365,33 @@ struct PresetEditor: View {
                             }
                         }
                     }, family: preset.family)
+            }
+        }
+    }
+
+    /// An example picture, shown when choosing a preset.
+    private func pictureSection(_ preset: GenerationPreset) -> some View {
+        let latest = app.latestPicture(of: id)
+        return Section("Picture") {
+            HStack(alignment: .top, spacing: 12) {
+                LoraThumbnail(image: app.presetPicture(id), size: 120, symbol: "slider.horizontal.3")
+                VStack(alignment: .leading, spacing: 6) {
+                    Button("Use Latest Picture", systemImage: "clock.arrow.circlepath") {
+                        if let latest, let png = app.gallery.pngData(latest.id) { app.setPresetPicture(id, image: png) }
+                    }
+                    .disabled(latest == nil)
+                    .help("The newest picture in the gallery made with “\(preset.name)”")
+                    Button("Choose from Gallery…", systemImage: "photo.on.rectangle") { choosingFromGallery = true }
+                        .disabled(app.gallery.index.items.isEmpty)
+                    Button("Choose File…", systemImage: "square.and.arrow.down") { choosingFile = true }
+                    if app.presetPicture(id) != nil {
+                        Button("Remove Picture", systemImage: "trash", role: .destructive) {
+                            app.removePresetPicture(id)
+                        }
+                    }
+                    Text("Shown when choosing a preset.").font(.caption).foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
             }
         }
     }

@@ -20,6 +20,7 @@ struct GenerateView: View {
     @State private var importing = false
     @State private var showLoraInfo = false
     @State private var addingLora = false
+    @State private var choosingPreset = false
     @AppStorage(PanelKeys.nodes) private var showNodes = false
     /// Closes the panel; its button sits in the panel's own header.
     var close: (() -> Void)?
@@ -224,10 +225,29 @@ struct GenerateView: View {
                 .disabled(!app.isConnected || !app.detecting.isEmpty)
             }
         } else {
-            Picker("Preset", selection: Binding(get: { preset?.id }, set: { gen.presetID = $0 })) {
-                ForEach(app.library.presets) { p in
-                    Text(p.name).tag(Optional(p.id))
+            // Chosen in the presets dialog, with their pictures, as LoRAs are.
+            Button {
+                choosingPreset = true
+            } label: {
+                HStack(spacing: 10) {
+                    LoraThumbnail(
+                        image: preset.flatMap { app.presetPicture($0.id) }, size: 44, symbol: "slider.horizontal.3")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(preset?.name ?? "Choose a Preset").font(.headline).lineLimit(1)
+                        if let preset, !preset.checkpoint.isEmpty {
+                            Text(PresetDetector.displayName(preset.checkpoint))
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary)
                 }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Choose the preset to generate with")
+            .sheet(isPresented: $choosingPreset) {
+                PresetsView(start: preset?.id) { gen.presetID = $0 }
             }
             if let preset {
                 HStack(spacing: 6) {

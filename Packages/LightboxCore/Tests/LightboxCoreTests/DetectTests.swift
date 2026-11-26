@@ -287,3 +287,13 @@ func detectsFamilyAndStyle(_ name: String, _ family: ModelFamily, _ style: Pictu
     #expect(four.textEncoders == ["qwen3-4b-encoder-Q4.gguf"])
     #expect(ModelFamily.flux2.isSplit && !ModelFamily.flux2.supportsGuides)
 }
+
+@Test func presetsKeepTheirPicture() throws {
+    var p = GenerationPreset(name: "Photo", checkpoint: "photo-xl.safetensors")
+    p.picture = UUID()
+    let again = try JSONDecoder().decode(GenerationPreset.self, from: JSONEncoder().encode(p))
+    #expect(again.picture == p.picture)
+    // Presets saved before pictures had them still load.
+    let old = try JSONDecoder().decode(GenerationPreset.self, from: Data(#"{"name":"Old"}"#.utf8))
+    #expect(old.picture == nil)
+}

@@ -80,7 +80,8 @@ public final class AppModel {
         compositions = CompositionsModel(store: CompositionStore(root: gallery.store.root), gallery: gallery)
         workflows = WorkflowsModel(store: WorkflowStore(root: gallery.store.root))
         previews = PreviewStore.loadAll(
-            library.modifiers.map(\.id) + library.loraNotes.values.compactMap(\.picture))
+            library.modifiers.map(\.id) + library.loraNotes.values.compactMap(\.picture)
+                + library.presets.compactMap(\.picture))
         gallery.recoverOrphans(rating: library.rating, presets: library.presets)
         if !serverAddress.isEmpty {
             Task { await connect() }
@@ -265,6 +266,33 @@ public final class AppModel {
         guard let id = library.loraNotes[name]?.picture else { return }
         removePreview(id)
         library.loraNotes[name]?.picture = nil
+    }
+
+    // MARK: - Preset pictures
+
+    public func presetPicture(_ id: UUID) -> CGImage? {
+        library.presets.first { $0.id == id }?.picture.flatMap { previews[$0] }
+    }
+
+    /// Use `image` (PNG or JPEG data) as the preset's example picture.
+    public func setPresetPicture(_ id: UUID, image: Data) {
+        guard let i = library.presets.firstIndex(where: { $0.id == id }) else { return }
+        let picture = library.presets[i].picture ?? UUID()
+        setPreview(picture, image: image)
+        guard previews[picture] != nil else { return }
+        library.presets[i].picture = picture
+    }
+
+    public func removePresetPicture(_ id: UUID) {
+        guard let i = library.presets.firstIndex(where: { $0.id == id }), let picture = library.presets[i].picture
+        else { return }
+        removePreview(picture)
+        library.presets[i].picture = nil
+    }
+
+    /// The newest gallery picture made with the preset.
+    public func latestPicture(of presetID: UUID) -> GalleryItem? {
+        gallery.index.items.filter { $0.recipe.preset.id == presetID }.max { $0.date < $1.date }
     }
 
     /// A slot for a LoRA picked in the chooser: its trigger words and

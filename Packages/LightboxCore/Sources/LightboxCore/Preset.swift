@@ -145,6 +145,8 @@ public struct GenerationPreset: Codable, Hashable, Identifiable, Sendable {
     public var loras: [LoraSlot]
     /// Made by `PresetDetector`; reasons it gave, shown in the editor.
     public var detectionNotes: [String]
+    /// An example picture, shown when choosing a preset (`PreviewStore`).
+    public var picture: UUID?
 
     public init(
         id: UUID = UUID(), name: String, family: ModelFamily = .sdxl, style: PictureStyle = .illustration,
@@ -183,7 +185,7 @@ public struct GenerationPreset: Codable, Hashable, Identifiable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, family, style, speed, checkpoint, vae, sampler, scheduler, steps, cfg, width, height
         case clipSkip, dialect, stylePrompt, negativePrompt, enhanceHint, loras, detectionNotes
-        case textEncoders, guidance, shift
+        case textEncoders, guidance, shift, picture
     }
 
     /// Fields added later fall back to their defaults, so older presets load.
@@ -216,6 +218,7 @@ public struct GenerationPreset: Codable, Hashable, Identifiable, Sendable {
         enhanceHint = try value(.enhanceHint, "")
         loras = try value(.loras, [])
         detectionNotes = try value(.detectionNotes, [])
+        picture = try c.decodeIfPresent(UUID.self, forKey: .picture)
     }
 }
 

@@ -229,6 +229,12 @@ struct GalleryGridView: View {
                 }
                 .help("Show this picture for a LoRA it was made with, when choosing LoRAs")
             }
+            if app.library.presets.contains(where: { $0.id == item.recipe.preset.id }) {
+                Button("Use as Preset Picture", systemImage: "slider.horizontal.3") {
+                    if let png = gallery.pngData(item.id) { app.setPresetPicture(item.recipe.preset.id, image: png) }
+                }
+                .help("Show this picture for “\(item.recipe.preset.name)”, when choosing a preset")
+            }
             Menu("Use as Style Preview", systemImage: "camera.filters") {
                 ForEach(ModifierCategory.allCases, id: \.self) { category in
                     Section(category.label) {
