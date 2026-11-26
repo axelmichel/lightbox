@@ -49,6 +49,7 @@ private func detect(_ name: String, metadata: [String: String]? = nil, loras: [S
     ("flux-2-klein-9b-Q4.gguf", .flux2, .illustration),
     ("flux2-dev.safetensors", .flux2, .illustration),
     ("anima-2b-made-up.safetensors", .anima, .anime),
+    ("krea2_turbo_made-up.safetensors", .krea2, .photo),
     ("animagine-made-up-xl.safetensors", .sdxl, .anime),
 ])
 func detectsFamilyAndStyle(_ name: String, _ family: ModelFamily, _ style: PictureStyle) {
@@ -180,6 +181,17 @@ func detectsFamilyAndStyle(_ name: String, _ family: ModelFamily, _ style: Pictu
     #expect(p.family.isSplit && p.family.textEncoderCount == 1)
 }
 
+@Test func krea2TurboSamplesInEightStepsWithoutCFG() {
+    let d = detect("krea2_turbo_made-up.safetensors")
+    #expect(d.speed == .turbo)
+    let p = d.preset(checkpoint: "krea2_turbo_made-up.safetensors")
+    #expect((p.sampler, p.scheduler, p.steps, p.cfg) == ("euler", "simple", 8, 1))
+    #expect(p.negativePrompt.isEmpty && p.dialect == .natural)
+    #expect(p.family.isSplit && p.family.textEncoderCount == 1)
+    // Flux Krea stays Flux.
+    #expect(detect("flux1-krea-Q4.gguf").family == .flux)
+}
+
 @Test func unknownDiffusionModelsSayHowToPickTheFamily() {
     let d = PresetDetector.detect(checkpoint: "WesternSample_v1.safetensors", diffusionModel: true)
     #expect(d.family == .unsupported)
@@ -226,6 +238,11 @@ func detectsFamilyAndStyle(_ name: String, _ family: ModelFamily, _ style: Pictu
         vaes: vaes + ["qwen-image-vae-made-up.safetensors"])
     #expect(anima.textEncoders == ["qwen3-0.6b-made-up.safetensors"])
     #expect(anima.vae == "qwen-image-vae-made-up.safetensors")
+    let krea2 = SplitParts.choose(
+        for: .krea2, textEncoders: encoders + ["qwen3vl-4b-made-up.safetensors"],
+        vaes: vaes + ["qwen-image-vae-made-up.safetensors"])
+    #expect(krea2.textEncoders == ["qwen3vl-4b-made-up.safetensors"])
+    #expect(krea2.vae == "qwen-image-vae-made-up.safetensors")
     let none = SplitParts.choose(for: .anima, textEncoders: encoders, vaes: vaes)
     #expect(none.textEncoders.isEmpty && none.vae == nil)
 }

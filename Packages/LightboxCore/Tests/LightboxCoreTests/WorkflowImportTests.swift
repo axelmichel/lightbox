@@ -127,6 +127,19 @@ func readsTxt2ImgWorkflow(_ file: String) throws {
     #expect(!p.detectionNotes.contains { $0.hasPrefix("Not taken over") }, "\(p.detectionNotes)")
 }
 
+@Test func importsAKrea2WorkflowByItsTextEncoder() throws {
+    let r = try WorkflowImport.read(try fixture("workflow_krea2_ui"), name: "mystery.json")
+    let p = r.preset
+    #expect(p.family == .krea2, "\(p.detectionNotes)")
+    #expect(p.checkpoint == "MysteryTurbo_v2.safetensors")
+    #expect(p.textEncoders == ["qwen3vl-4b-made-up.safetensors"])
+    #expect(p.vae == "qwen-image-vae-made-up.safetensors")
+    #expect((p.steps, p.cfg, p.sampler, p.scheduler) == (8, 1, "euler", "simple"))
+    #expect((p.width, p.height) == (1024, 1024))
+    #expect(r.seed == 11)
+    #expect(!p.detectionNotes.contains { $0.hasPrefix("Not taken over") }, "\(p.detectionNotes)")
+}
+
 @Test func importsTheFlux2KleinWorkflow() throws {
     let r = try WorkflowImport.read(try fixture("workflow_flux2_ui"), name: "flux2_klein.json")
     let p = r.preset

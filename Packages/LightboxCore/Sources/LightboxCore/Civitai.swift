@@ -27,6 +27,7 @@ public struct CivitaiModel: Equatable, Sendable {
         if b.contains("pony") { return .pony }
         if b.contains("sdxl") { return .sdxl }
         if b.contains("sd 1.") { return .sd15 }
+        if b.contains("krea 2") || b.contains("krea2") { return .krea2 }
         if b.contains("flux.2") || b.contains("flux 2") || b.contains("klein") { return .flux2 }
         if b.contains("flux.1") || b == "flux" { return .flux }
         if b.contains("zimage") || b.contains("z-image") || b.contains("z image") { return .zImage }

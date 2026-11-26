@@ -90,7 +90,7 @@ private let versionJSON = """
 
 @Test(arguments: [
     ("SDXL 1.0", ModelFamily.sdxl), ("Pony", .pony), ("SD 1.5", .sd15), ("Flux.1 D", .flux), ("ZImageTurbo", .zImage),
-    ("Flux.2 Klein 9B", .flux2), ("Anima", .anima),
+    ("Flux.2 Klein 9B", .flux2), ("Anima", .anima), ("Krea 2", .krea2),
     ("SD 3.5 Large", .unsupported),
 ])
 func civitaiBaseModels(_ base: String, _ family: ModelFamily) {

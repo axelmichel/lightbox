@@ -29,7 +29,7 @@ public struct Detection: Equatable, Sendable {
         switch (family, style) {
         // Flux and Z-Image read sentences with their T5 / Qwen encoders.
         // Anima reads tags and sentences alike with its Qwen3 encoder.
-        case (.flux, _), (.zImage, _), (.flux2, _), (.anima, _): .natural
+        case (.flux, _), (.zImage, _), (.flux2, _), (.anima, _), (.krea2, _): .natural
         case (.illustrious, _), (.pony, _), (_, .anime): .tags
         default: .natural
         }
@@ -82,7 +82,8 @@ public struct Detection: Equatable, Sendable {
             p.negativePrompt =
                 "cartoon, anime, illustration, painting, drawing, cgi, render, lowres, blurry, deformed, "
                 + "bad anatomy, bad hands, text, watermark"
-        case (.sdxl, .illustration), (.unsupported, _), (.flux, _), (.zImage, _), (.flux2, _), (.anima, _):
+        case (.sdxl, .illustration), (.unsupported, _), (.flux, _), (.zImage, _), (.flux2, _), (.anima, _),
+            (.krea2, _):
             (p.sampler, p.scheduler, p.steps, p.cfg, p.clipSkip) = ("dpmpp_2m", "karras", 30, 6, 1)
             p.stylePrompt = "detailed digital illustration, vibrant colors"
             p.negativePrompt = "lowres, worst quality, blurry, bad anatomy, bad hands, text, watermark, signature"
@@ -138,6 +139,11 @@ extension Detection {
             let base = notes.contains { $0.localizedCaseInsensitiveContains("base model") }
             (p.steps, p.cfg) = base ? (28, 4) : (namedSteps ?? 4, 1)
             p.negativePrompt = ""
+        case .krea2:
+            // Turbo: 8 steps without CFG, the negative zeroed out, as its
+            // workflows have it. The full model is a starting point only.
+            (p.steps, p.cfg) = fast ? (namedSteps ?? 8, 1) : (28, 4)
+            p.negativePrompt = fast ? "" : "lowres, blurry, bad anatomy, bad hands, text, watermark"
         case .anima:
             // As Anima's workflows have it: plain KSampler, CFG 4, quality
             // and score tags on both sides.
@@ -188,6 +194,9 @@ public enum PresetDetector {
                 notes.append("\(f.label): \(why).")
             }
         }
+        if let hit = file.first(Fragments.krea2) {
+            found(.krea2, "“\(hit)” in the file name; loaded with its text encoder and VAE as separate files")
+        }
         if let hit = file.first(Fragments.anima) {
             found(.anima, "“\(hit)” in the file name; loaded with its text encoder and VAE as separate files")
         }
@@ -231,7 +240,7 @@ public enum PresetDetector {
             family = .unsupported
             notes = [
                 "Not supported: a diffusion model whose name doesn't say what it is. If it is a fine-tune of "
-                    + "Flux, Flux 2, Z-Image or Anima, pick that family under Model."
+                    + "Flux, Flux 2, Z-Image, Anima or Krea 2, pick that family under Model."
             ]
         }
         if family == nil {
@@ -418,6 +427,8 @@ enum Fragments {
     static let zImage = ["zimage"]
     /// A whole word: "animagine" is SDXL.
     static let anima = ["=anima"]
+    /// Not "flux1-krea", which is Flux.
+    static let krea2 = ["krea2"]
     static let illustrious = ["illustrious", "noobai", "noob", "ilxl", "ill"]
     static let pony = ["pony", "pdxl", "autismmix"]
     static let sdxl = [

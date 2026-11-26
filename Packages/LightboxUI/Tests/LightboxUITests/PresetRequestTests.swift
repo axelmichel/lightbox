@@ -62,6 +62,18 @@ private let prompt = ComposedPrompt(
                 clipType: "stable_diffusion", vae: "qwen-image-vae-made-up.safetensors",
                 emptyLatent: "EmptyLatentImage"))
 
+    let krea2 = GenerationPreset(
+        name: "Krea 2", family: .krea2, checkpoint: "krea2-made-up.safetensors",
+        vae: "qwen-image-vae-made-up.safetensors", textEncoders: ["qwen3vl-4b-made-up.safetensors"])
+    var noNegative = empty
+    noNegative.negative = ""
+    #expect(
+        krea2.request(noNegative, seed: 1).split
+            == SplitModelRequest(
+                model: "krea2-made-up.safetensors", textEncoders: ["qwen3vl-4b-made-up.safetensors"],
+                clipType: "krea2", vae: "qwen-image-vae-made-up.safetensors", zeroNegative: true,
+                emptyLatent: "EmptyLatentImage"))
+
     let flux2 = GenerationPreset(
         name: "Klein", family: .flux2, checkpoint: "flux-2-klein-9b-Q4.gguf", vae: "flux2-vae.safetensors",
         textEncoders: ["qwen-8b-made-up.safetensors"])

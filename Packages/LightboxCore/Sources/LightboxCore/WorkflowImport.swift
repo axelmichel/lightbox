@@ -495,6 +495,7 @@ public enum WorkflowImport {
         case "flux": .flux
         case "flux2": .flux2
         case "lumina2": .zImage
+        case "krea2": .krea2
         case "stable_diffusion" where encoders.contains { $0.lowercased().contains("qwen") }: .anima
         case nil: nil
         default: .unsupported

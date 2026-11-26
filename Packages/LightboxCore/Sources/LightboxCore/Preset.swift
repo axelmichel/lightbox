@@ -36,6 +36,9 @@ public enum ModelFamily: String, Codable, CaseIterable, Sendable {
     /// Anima: an anime model with a diffusion model, the small Qwen3 0.6B
     /// text encoder and the Qwen-Image VAE as separate files.
     case anima
+    /// Krea 2: diffusion model, a Qwen3-VL 4B text encoder and the
+    /// Qwen-Image VAE as separate files; Turbo samples in 8 steps without CFG.
+    case krea2
     /// SD3, HiDream and other models Lightbox has no workflow for yet.
     case unsupported
 
@@ -49,6 +52,7 @@ public enum ModelFamily: String, Codable, CaseIterable, Sendable {
         case .zImage: "Z-Image"
         case .flux2: "Flux 2"
         case .anima: "Anima"
+        case .krea2: "Krea 2"
         case .unsupported: "Not supported"
         }
     }
@@ -56,7 +60,7 @@ public enum ModelFamily: String, Codable, CaseIterable, Sendable {
     public var isSupported: Bool { self != .unsupported }
 
     /// Loaded from a diffusion model, text encoders and a VAE instead of one checkpoint.
-    public var isSplit: Bool { [.flux, .zImage, .flux2, .anima].contains(self) }
+    public var isSplit: Bool { [.flux, .zImage, .flux2, .anima, .krea2].contains(self) }
 
     /// ControlNets and IP-Adapters exist for it in Lightbox.
     public var supportsGuides: Bool { isSupported && !isSplit }
@@ -65,7 +69,7 @@ public enum ModelFamily: String, Codable, CaseIterable, Sendable {
     public var textEncoderCount: Int {
         switch self {
         case .flux: 2
-        case .zImage, .flux2, .anima: 1
+        case .zImage, .flux2, .anima, .krea2: 1
         default: 0
         }
     }

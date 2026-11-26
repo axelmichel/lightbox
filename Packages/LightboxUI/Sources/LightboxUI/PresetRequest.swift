@@ -17,6 +17,7 @@ extension GenerationPreset {
                 case .flux: "two text encoders (T5 and CLIP-L)"
                 case .flux2: "a text encoder (Qwen3 8B for Klein 9B, 4B for Klein 4B)"
                 case .anima: "a text encoder (Qwen3 0.6B)"
+                case .krea2: "a text encoder (Qwen3-VL 4B)"
                 default: "a text encoder (Qwen3 4B)"
                 }
             return "The preset “\(name)” needs \(need); pick them under Edit Presets."
@@ -25,7 +26,7 @@ extension GenerationPreset {
             let usual =
                 switch family {
                 case .flux2: "flux2-vae.safetensors"
-                case .anima: "qwen_image_vae.safetensors"
+                case .anima, .krea2: "qwen_image_vae.safetensors"
                 default: "ae.safetensors"
                 }
             return "The preset “\(name)” needs a VAE (usually \(usual)); pick it under Edit Presets."
@@ -47,18 +48,19 @@ extension GenerationPreset {
             case .flux2: "flux2"
             // Anima's Qwen3 encoder is loaded as "stable_diffusion".
             case .anima: "stable_diffusion"
+            case .krea2: "krea2"
             default: "lumina2"
             }
         return SplitModelRequest(
             model: checkpoint, textEncoders: Array(textEncoders.prefix(family.textEncoderCount)),
             clipType: clipType, vae: vae ?? "",
             guidance: family == .flux ? guidance : nil, shift: family == .zImage ? shift : nil,
-            // Flux has no negative prompt; one typed is still used (it
-            // matters only with a CFG above 1).
-            zeroNegative: (family == .flux || family == .flux2)
+            // Flux and Krea 2 have no negative prompt; one typed is still
+            // used (it matters only with a CFG above 1).
+            zeroNegative: [.flux, .flux2, .krea2].contains(family)
                 && negative.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
             sampling: family == .flux2 ? .flux2 : .standard,
-            emptyLatent: family == .anima ? "EmptyLatentImage" : "EmptySD3LatentImage")
+            emptyLatent: family == .anima || family == .krea2 ? "EmptyLatentImage" : "EmptySD3LatentImage")
     }
 
     /// The request for a composed prompt, at the preset's size unless
