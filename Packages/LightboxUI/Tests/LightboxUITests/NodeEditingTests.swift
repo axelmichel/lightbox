@@ -161,3 +161,32 @@ private func builtDoc() throws -> WorkflowDocument {
             == "Krea 2")
     #expect(NodeEditing.modelKind(WorkflowDocument(), catalog: ComfyCatalog()) == nil)
 }
+
+@Test func ownNodesCopyPasteMuteAndBypass() throws {
+    var doc = try builtDoc()
+    let decode = try #require(doc.roles.first { $0.value == NodeRole(.vaeDecode) }?.key)
+    var scale = GraphNode(id: 0, type: "ImageScaleBy", position: CGPoint(x: 100, y: 100))
+    scale.inputs = [NodeInputSlot(name: "image", type: "IMAGE")]
+    scale.outputs = [NodeOutputSlot(name: "IMAGE", type: "IMAGE")]
+    let a = doc.graph.addNode(scale)
+    let b = doc.graph.addNode(scale)
+    doc.graph.connect(from: a, 0, to: b, 0)
+    doc.graph.connect(from: decode, 0, to: a, 0)
+
+    // Only the user's nodes, with the link between them, not the one from the decode.
+    let clip = try #require(NodeEditing.clipboard([a, b, decode], from: doc))
+    #expect(Set(clip.graph.nodes.map(\.id)) == [a, b])
+    #expect(clip.graph.links.count == 1)
+    let (pasted, ids) = NodeEditing.pasted(clip, into: doc, offset: CGVector(dx: 40, dy: 40))
+    #expect(ids.count == 2 && Set(ids).isDisjoint(with: [a, b]))
+    #expect(pasted.graph.nodes.count == doc.graph.nodes.count + 2)
+    #expect(pasted.graph.node(ids[0])?.position == CGPoint(x: 140, y: 140))
+    #expect(pasted.graph.links.count == doc.graph.links.count + 1)
+    #expect(NodeEditing.clipboard([decode], from: doc) == nil)
+
+    // Mute, then again: running. Lightbox's own stay as they are.
+    let muted = NodeEditing.toggled(.never, [a, decode], in: doc)
+    #expect(muted.graph.node(a)?.mode == .never && muted.graph.node(decode)?.mode == .always)
+    #expect(NodeEditing.toggled(.never, [a], in: muted).graph.node(a)?.mode == .always)
+    #expect(NodeEditing.toggled(.bypass, [a, b], in: muted).graph.nodes.filter { $0.mode == .bypass }.count == 2)
+}

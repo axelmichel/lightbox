@@ -34,6 +34,8 @@ struct NodeGraphView: View {
     /// not when moving a node saves the standard graph as a workflow.
     @State private var canvasID = UUID()
     @Environment(\.undoManager) private var undo
+    @State private var exporting: JSONFile?
+    @State private var exportName = "Workflow"
 
     var body: some View {
         let graph = app.generation.graph(app)
@@ -83,6 +85,14 @@ struct NodeGraphView: View {
         } message: { _ in
             Text("The graph goes back to the preset's standard one.")
         }
+        .fileExporter(
+            isPresented: Binding(get: { exporting != nil }, set: { if !$0 { exporting = nil } }), document: exporting,
+            contentType: .json, defaultFilename: exportName
+        ) { result in
+            if case .failure(let error) = result {
+                app.workflows.problem = "Could not export the workflow: \(error.localizedDescription)"
+            }
+        }
         .alert(
             "Workflows",
             isPresented: Binding(
@@ -99,7 +109,7 @@ struct NodeGraphView: View {
         HStack(spacing: 10) {
             Text("Nodes").font(.headline)
             if let preset = app.generation.preset(in: app.library) {
-                workflowMenu(preset, shown: state?.workflow, canSave: state != nil)
+                workflowMenu(preset, shown: state?.workflow, canSave: state != nil, state: state)
             }
             Spacer()
             Button("Show the Gallery", systemImage: "photo.on.rectangle.angled") { showNodes = false }
@@ -117,7 +127,9 @@ struct NodeGraphView: View {
         .overlay(alignment: .bottom) { Divider() }
     }
 
-    private func workflowMenu(_ preset: GenerationPreset, shown: WorkflowEntry?, canSave: Bool) -> some View {
+    private func workflowMenu(
+        _ preset: GenerationPreset, shown: WorkflowEntry?, canSave: Bool, state: GenerationModel.GraphState?
+    ) -> some View {
         let gen = app.generation
         let own = app.workflows.entries(for: preset.id)
         let loose = app.workflows.withoutPreset(app.library.presets)
@@ -150,6 +162,10 @@ struct NodeGraphView: View {
                 naming = .new
             }
             .disabled(!canSave)
+            Button("Export for ComfyUI…", systemImage: "square.and.arrow.up") {
+                export(state, named: shown?.name ?? preset.name)
+            }
+            .disabled(!canSave)
             if let shown {
                 Button("Rename “\(shown.name)”…", systemImage: "pencil") {
                     name = shown.name
@@ -164,6 +180,23 @@ struct NodeGraphView: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help("The workflow shown: the preset's standard graph, or one saved with its layout")
+    }
+
+    /// The graph shown as a ComfyUI file. It can be run in ComfyUI as it is,
+    /// so it is checked like sending: refused prompts aren't exported.
+    private func export(_ state: GenerationModel.GraphState?, named name: String) {
+        guard let state else { return }
+        switch GraphSend.prepare(state.doc, catalog: app.catalog, rating: app.library.rating) {
+        case .failure(let problem):
+            app.workflows.problem = "Not exported: \(problem.message)"
+        case .success:
+            guard state.refusal == nil, let data = try? state.doc.data() else {
+                app.workflows.problem = "Not exported: the prompt was refused."
+                return
+            }
+            exportName = name
+            exporting = JSONFile(data: data)
+        }
     }
 
     /// The workflow was saved for another kind of model than its preset now
@@ -236,6 +269,9 @@ struct NodeGraphView: View {
             guard let spec = app.catalog.nodes[type] else { return }
             doc.graph.addNode(type, spec: spec, at: point)
             name = "Add Node"
+        case .document(let changed, let action):
+            doc = changed
+            name = action
         case .delete(let nodes):
             // Added nodes go; Lightbox's that stand for a setting switch it off.
             var switches: [GraphChange] = []
@@ -316,6 +352,8 @@ enum StructureChange {
     /// A node of the server's at a point on the canvas.
     case add(String, CGPoint)
     case delete([Int])
+    /// The document as changed by the canvas (pasted, duplicated, muted…).
+    case document(WorkflowDocument, name: String)
 }
 
 /// A document's nodes and links. Click a node to select it (⇧ or ⌘ for
@@ -541,7 +579,19 @@ struct NodeCanvas: View {
             .focused($focused)
             #if os(macOS)
                 .onDeleteCommand { deleteSelection(doc) }
+                .onCopyCommand { copySelection(doc) }
+                .onPasteCommand(of: [.json, .plainText, .utf8PlainText]) { providers in paste(providers, into: doc) }
             #endif
+            .onKeyPress(phases: .down) { press in
+                // ⌘D duplicates; ⌃M mutes and ⌃B bypasses, as in ComfyUI (⌘M minimizes the window).
+                switch (press.characters.lowercased(), press.modifiers) {
+                case ("d", .command): duplicateSelection(doc)
+                case ("m", .control): mode(.never, doc)
+                case ("b", .control): mode(.bypass, doc)
+                default: return .ignored
+                }
+                return .handled
+            }
             .overlay(alignment: .bottomTrailing) { controls(shown, size: size, doc: doc) }
             .overlay(alignment: .top) {
                 if let hint {
@@ -593,6 +643,15 @@ struct NodeCanvas: View {
             Button("Delete", systemImage: "trash") { deleteSelection(doc) }
                 .help("Delete the selected nodes you added")
                 .disabled(!selection.contains { NodeEditing.canDelete($0, in: doc) })
+            Menu("More", systemImage: "ellipsis.circle") {
+                Button("Duplicate", systemImage: "plus.square.on.square") { duplicateSelection(doc) }
+                Button("Mute", systemImage: "speaker.slash") { mode(.never, doc) }
+                Button("Bypass", systemImage: "arrow.uturn.forward") { mode(.bypass, doc) }
+            }
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(NodeEditing.ownNodes(selection, in: doc).isEmpty)
+            .help("Duplicate (⌘D), mute (⌃M) or bypass (⌃B) the selected nodes you added")
             Divider().frame(height: 16)
             Button("Zoom Out", systemImage: "minus.magnifyingglass") {
                 viewport = shown.zoomed(by: 1 / 1.25, around: center)
@@ -674,6 +733,44 @@ struct NodeCanvas: View {
         if let id = drag.replacing { onStructure(.disconnect(id)) }
     }
 
+    private func duplicateSelection(_ doc: WorkflowDocument) {
+        guard let clip = NodeEditing.clipboard(selection, from: doc) else { return ownOnly() }
+        let (changed, ids) = NodeEditing.pasted(clip, into: doc, offset: CGVector(dx: 40, dy: 40))
+        onStructure(.document(changed, name: "Duplicate"))
+        selection = Set(ids)
+    }
+
+    private func mode(_ mode: NodeMode, _ doc: WorkflowDocument) {
+        guard !NodeEditing.ownNodes(selection, in: doc).isEmpty else { return ownOnly() }
+        onStructure(.document(NodeEditing.toggled(mode, selection, in: doc), name: mode == .never ? "Mute" : "Bypass"))
+    }
+
+    private func ownOnly() {
+        withAnimation { hint = "Only nodes you added can be copied, muted or bypassed." }
+    }
+
+    #if os(macOS)
+        private func copySelection(_ doc: WorkflowDocument) -> [NSItemProvider] {
+            guard let clip = NodeEditing.clipboard(selection, from: doc), let data = try? clip.data(),
+                let text = String(data: data, encoding: .utf8)
+            else { return [] }
+            return [NSItemProvider(object: text as NSString)]
+        }
+
+        private func paste(_ providers: [NSItemProvider], into doc: WorkflowDocument) {
+            for provider in providers {
+                _ = provider.loadObject(ofClass: String.self) { text, _ in
+                    guard let text, let clip = try? WorkflowDocument(data: Data(text.utf8)) else { return }
+                    Task { @MainActor in
+                        let (changed, ids) = NodeEditing.pasted(clip, into: doc, offset: CGVector(dx: 40, dy: 40))
+                        onStructure(.document(changed, name: "Paste"))
+                        selection = Set(ids)
+                    }
+                }
+            }
+        }
+    #endif
+
     /// Delete the selected nodes: added ones go, Lightbox's switch their
     /// setting off (a LoRA, a fix, a guide), the required ones stay.
     private func deleteSelection(_ doc: WorkflowDocument) {
@@ -688,7 +785,14 @@ struct NodeCanvas: View {
 
     private func draw(_ node: GraphNode, _ layout: NodeLayout, role: NodeRole?, in context: GraphicsContext) {
         let corner = 8.0
+        // Muted nodes faded, bypassed ones tinted, as ComfyUI draws them.
+        var context = context
+        if node.mode == .never { context.opacity = 0.4 }
         context.fill(Path(roundedRect: layout.bounds, cornerRadius: corner), with: .color(NodeColors.body))
+        if node.mode == .bypass {
+            context.fill(
+                Path(roundedRect: layout.bounds, cornerRadius: corner), with: .color(NodeColors.bypass.opacity(0.35)))
+        }
         let title = UnevenRoundedRectangle(
             topLeadingRadius: corner, bottomLeadingRadius: node.collapsed ? corner : 0,
             bottomTrailingRadius: node.collapsed ? corner : 0, topTrailingRadius: corner)
@@ -811,6 +915,7 @@ enum NodeColors {
     static let error = Color(hex: 0xFF6E6E)
     static let selection = Color(hex: 0xFFFFFF)
     static let running = Color(hex: 0x00FF00)
+    static let bypass = Color(hex: 0x9F40FF)
 
     /// ComfyUI's colours for link types.
     static func type(_ type: String) -> Color {

@@ -249,6 +249,10 @@ Kopieren/Einfügen/Duplizieren · Stummschalten/Bypass · Gruppen · Reroutes ·
 ComfyUI-Dateien importieren (Rollen erkennen, Basis `WorkflowImport`) und exportieren · entkoppelte, völlig freie
 Workflows · Live-Vorschau am Knoten · iPad-Touch.
 
+**7.1 Bearbeiten und Export (vorgezogen).** Duplizieren (⌘D), Kopieren/Einfügen (⌘C/⌘V), Stummschalten (⌘M) und
+Bypass (⌘B) für eigene Knoten; die verwalteten bleiben, wie sie sind. „Für ComfyUI exportieren …“ speichert den
+gezeigten Graphen als ComfyUI-Datei; der Export wird wie das Senden vom Content Guard geprüft.
+
 ### Phase 8: Workflow-Presets für neue Engines
 
 Ziel: Ein Modell, das Lightbox nicht kennt, läuft ohne neuen Code, sobald es in ComfyUI einen funktionierenden

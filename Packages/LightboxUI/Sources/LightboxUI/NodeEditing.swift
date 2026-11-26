@@ -160,3 +160,52 @@ extension NodeEditing {
         }
     }
 }
+
+// MARK: - Copy, paste, mute, bypass
+
+extension NodeEditing {
+    /// The nodes a selection can copy, mute or bypass: those the user added.
+    static func ownNodes(_ ids: Set<Int>, in doc: WorkflowDocument) -> Set<Int> {
+        let roles = doc.roles
+        return ids.filter { doc.graph.node($0) != nil && roles[$0] == nil }
+    }
+
+    /// The user's nodes of `ids` with the links between them, as a document
+    /// of their own (for the pasteboard).
+    static func clipboard(_ ids: Set<Int>, from doc: WorkflowDocument) -> WorkflowDocument? {
+        let own = ownNodes(ids, in: doc)
+        guard !own.isEmpty else { return nil }
+        var copy = WorkflowDocument()
+        copy.schema = doc.schema
+        copy.graph = doc.graph
+        copy.graph.removeNodes(Set(doc.graph.nodes.map(\.id)).subtracting(own))
+        copy.graph.groups = []
+        copy.graph.reroutes = []
+        return copy
+    }
+
+    /// `clip`'s nodes put into `doc` with new ids, moved by `offset`; they
+    /// are the user's, whatever they were. Returns the new ids too.
+    static func pasted(_ clip: WorkflowDocument, into doc: WorkflowDocument, offset: CGVector)
+        -> (doc: WorkflowDocument, ids: [Int])
+    {
+        var d = doc
+        let ids = d.graph.duplicate(Set(clip.graph.nodes.map(\.id)), from: clip.graph, offset: offset)
+        for i in d.graph.nodes.indices where ids.contains(d.graph.nodes[i].id) {
+            d.graph.nodes[i].properties[WorkflowDocument.roleProperty] = nil
+        }
+        return (d, ids)
+    }
+
+    /// The user's nodes of `ids` muted (or bypassed); back to running if
+    /// they all are already.
+    static func toggled(_ mode: NodeMode, _ ids: Set<Int>, in doc: WorkflowDocument) -> WorkflowDocument {
+        let own = ownNodes(ids, in: doc)
+        var d = doc
+        let all = !own.isEmpty && own.allSatisfy { d.graph.node($0)?.mode == mode }
+        for i in d.graph.nodes.indices where own.contains(d.graph.nodes[i].id) {
+            d.graph.nodes[i].mode = all ? .always : mode
+        }
+        return d
+    }
+}

@@ -70,6 +70,22 @@ struct PNGFile: FileDocument {
     }
 }
 
+/// A ComfyUI workflow file for `fileExporter`.
+struct JSONFile: FileDocument {
+    static let readableContentTypes: [UTType] = [.json]
+    var data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
+
 /// A multi-line text box for prompts: a fixed, roomy height with a visible
 /// scroll bar once the text is longer, and the title above it.
 struct PromptField: View {
