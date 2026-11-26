@@ -249,6 +249,33 @@ Kopieren/Einfügen/Duplizieren · Stummschalten/Bypass · Gruppen · Reroutes ·
 ComfyUI-Dateien importieren (Rollen erkennen, Basis `WorkflowImport`) und exportieren · entkoppelte, völlig freie
 Workflows · Live-Vorschau am Knoten · iPad-Touch.
 
+### Phase 8: Workflow-Presets für neue Engines
+
+Ziel: Ein Modell, das Lightbox nicht kennt, läuft ohne neuen Code, sobald es in ComfyUI einen funktionierenden
+Workflow dafür gibt. Der Workflow wird zur Vorlage eines Presets; Lightbox setzt Prompt, Seed, Größe und Sampling
+ein und sendet ihn über `GraphSend`. Für die bekannten Engines bleibt der abgestimmte Weg über `WorkflowBuilder`.
+
+**8.1 Rollen in fremden Workflows.** Reine Funktion (ComfyKit): In einem UI-Workflow vom Sampler aus die Teile
+finden und mit Rollen markieren: Modell-Lader, Text-Encoder, VAE, positiver/negativer Prompt (auch
+`ConditioningZeroOut`), leeres Latent, Sampler (KSampler oder `SamplerCustomAdvanced` mit Teilen), Ausgabe,
+Guidance/Shift falls vorhanden. Was fehlt, wird benannt („kein Prompt-Knoten gefunden“).
+Tests: die vorhandenen Fixtures (Flux, Flux 2, Z-Image, Anima, Krea 2, SDXL) bekommen die erwarteten Rollen;
+`ManagedGraph` liest daraus dieselben Werte wie `WorkflowImport`.
+
+**8.2 Vorlage füllen.** Reine Funktion: Vorlage + Anfrage → Dokument. Werte nach Rolle setzen (Prompt aus
+`compose()`, Negativ, Seed, Schritte, CFG, Sampler, Scheduler, Größe, Anzahl), LoRAs als Kette zwischen
+Modell-Lader und dessen Abnehmern einfügen. Alle anderen Knoten der Vorlage bleiben, wie sie sind.
+Tests: gefüllte Vorlage → `ManagedGraph.settings` entspricht der Anfrage; ein zweites Füllen ändert nichts;
+Texte gehen durch `GraphSend` (Guard-Tests wie in 5.1).
+
+**8.3 Preset aus einem Workflow.** `GenerationPreset` verweist auf eine Vorlage (gespeichert wie Workflows).
+Anlegen aus einer Datei oder aus den im Server gespeicherten Workflows. Der Preset-Editor zeigt „Aus Workflow …“,
+die übernommenen Werte und was nicht gefunden wurde. Guides und Gesichts-/Hand-Fix sind bei Vorlagen-Presets aus.
+
+**8.4 Generieren und Graph.** Vorlagen-Presets senden immer über den Graphen; die Node-Ansicht zeigt die gefüllte
+Vorlage, Bearbeiten, Workflows und Abweichungen funktionieren wie bei den anderen Presets.
+Abnahme: ein Preset aus einem Server-Workflow einer Engine, die Lightbox nicht kennt, erzeugt Bilder.
+
 ## 7. Annahmen (bitte widersprechen, wenn falsch)
 
 - **A1** „Standard“ ist kein gespeicherter Workflow, sondern wird immer frisch aus dem Preset abgeleitet. Die
@@ -261,6 +288,10 @@ Workflows · Live-Vorschau am Knoten · iPad-Touch.
 - **A6** Inpainting und die Bearbeitungsfunktionen des Kompositions-Editors bleiben außerhalb des Node-Editors.
 
 ## 8. Offene Detailfragen (werden vor dem jeweiligen Schritt geklärt)
+
+- **F5 (vor 8.3), entschieden:** Ein Workflow einer bekannten Engine ergibt weiterhin ein abgestimmtes Preset; eine
+  Option „Workflow als Vorlage behalten“ macht stattdessen ein Vorlagen-Preset.
+- **F6 (vor 8.3), entschieden:** Vorlagen kommen aus den im Server gespeicherten Workflows und aus Dateien.
 
 - **F1 (vor 5.2), entschieden:** Wählbar in den Einstellungen. Standard: Das Rezept verweist nur auf den Workflow
   (klein). Eingeschaltet „ganzen Graphen speichern“: Der gesendete Graph wird mit dem Bild gespeichert (exakt
