@@ -276,3 +276,32 @@ extension NodeEditing {
         return points
     }
 }
+
+// MARK: - Subgraphs
+
+extension NodeEditing {
+    /// The inside of subgraph `id` to show: its nodes, with its inputs and
+    /// outputs as two nodes left and right of them. They have the ids the
+    /// inside's links use for them (`GraphLink.subgraphInputID`, …), so the
+    /// links draw as they are.
+    static func inside(_ id: String, of doc: WorkflowDocument) -> WorkflowDocument? {
+        guard let def = doc.subgraph(id) else { return nil }
+        var d = WorkflowDocument()
+        d.subgraphs = doc.subgraphs
+        d.graph = def.graph
+        let bounds = def.graph.nodes.reduce(CGRect.null) { $0.union($1.frame) }
+        let b = bounds.isNull ? CGRect(x: 0, y: 0, width: 400, height: 200) : bounds
+        var inputs = GraphNode(
+            id: GraphLink.subgraphInputID, type: "Subgraph Inputs", position: CGPoint(x: b.minX - 300, y: b.minY),
+            size: CGSize(width: 200, height: 40))
+        inputs.title = "Inputs"
+        inputs.outputs = def.inputs.map { NodeOutputSlot(name: $0.name, type: $0.type, links: $0.linkIDs) }
+        var outputs = GraphNode(
+            id: GraphLink.subgraphOutputID, type: "Subgraph Outputs", position: CGPoint(x: b.maxX + 100, y: b.minY),
+            size: CGSize(width: 200, height: 40))
+        outputs.title = "Outputs"
+        outputs.inputs = def.outputs.map { NodeInputSlot(name: $0.name, type: $0.type, link: $0.linkIDs.first) }
+        d.graph.nodes += [inputs, outputs]
+        return d
+    }
+}

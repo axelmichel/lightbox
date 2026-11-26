@@ -257,6 +257,10 @@ gezeigten Graphen als ComfyUI-Datei; der Export wird wie das Senden vom Content 
 mit ⌘G um die Auswahl gelegt, umbenannt und gelöscht (die Knoten bleiben). Links laufen durch ihre nativen Reroutes;
 diese werden vorerst nur gezeigt.
 
+**7.3 Subgraphs anzeigen und betreten.** Ein Subgraph-Knoten trägt den Namen des Subgraphs. Doppelklick zeigt sein
+Inneres, mit seinen Ein- und Ausgängen als zwei Knoten links und rechts; eine Leiste oben („Workflow › Name“) und Esc
+führen zurück, in die Ansicht von vorher. Innen nur ansehen: verschieben und zoomen, nichts bearbeiten.
+
 ### Phase 8: Workflow-Presets für neue Engines
 
 Ziel: Ein Modell, das Lightbox nicht kennt, läuft ohne neuen Code, sobald es in ComfyUI einen funktionierenden

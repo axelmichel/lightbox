@@ -421,10 +421,19 @@ struct NodeCanvas: View {
     @State private var adding: AddRequest?
     /// Why something was refused, shown for a moment.
     @State private var hint: String?
+    /// The subgraphs entered, outermost first, with the view each was left in.
+    @State private var path: [(id: String, viewport: NodeViewport?)] = []
     @FocusState private var focused: Bool
+
+    /// The subgraph shown, if one is entered and still there. Inside one,
+    /// the graph can only be looked at.
+    private var entered: String? {
+        path.last.flatMap { state.doc.subgraph($0.id) == nil ? nil : $0.id }
+    }
 
     /// The document as shown: with the nodes being dragged where they are now.
     private var doc: WorkflowDocument {
+        if let entered, let inside = NodeEditing.inside(entered, of: state.doc) { return inside }
         if let drag = groupDrag {
             return NodeEditing.movedGroup(
                 state.doc, drag.id, nodes: drag.nodes, reroutes: drag.reroutes, by: drag.delta)
@@ -477,12 +486,14 @@ struct NodeCanvas: View {
                             Path(roundedRect: layout.bounds.insetBy(dx: -3, dy: -3), cornerRadius: 10),
                             with: .color(NodeColors.selection), lineWidth: 2 / shown.scale)
                     }
-                    if node.id == running {
+                    // Run states are the workflow's nodes'; inside a subgraph ids mean others.
+                    let outside = entered == nil
+                    if outside, node.id == running {
                         context.stroke(
                             Path(roundedRect: layout.bounds.insetBy(dx: -6, dy: -6), cornerRadius: 12),
                             with: .color(NodeColors.running), lineWidth: 3 / shown.scale)
                     }
-                    if let message = errors[node.id] {
+                    if outside, let message = errors[node.id] {
                         context.stroke(
                             Path(roundedRect: layout.bounds.insetBy(dx: -6, dy: -6), cornerRadius: 12),
                             with: .color(NodeColors.error), lineWidth: 3 / shown.scale)
@@ -519,7 +530,9 @@ struct NodeCanvas: View {
                     .onChanged { value in
                         if panStart == nil, nodeDrag == nil, linkDrag == nil {
                             let start = shown.toCanvas(value.startLocation)
-                            if let socket = socketDrag(at: start, doc, layouts, roles) {
+                            if entered != nil {
+                                panStart = shown
+                            } else if let socket = socketDrag(at: start, doc, layouts, roles) {
                                 // A socket: draw (or pull off) a link. Hold the view still.
                                 viewport = shown
                                 linkDrag = socket
@@ -580,7 +593,7 @@ struct NodeCanvas: View {
                         // A group is selected by its title, alone.
                         selectedGroup = hit == nil ? NodeEditing.group(at: point, in: doc) : nil
                         if selectedGroup != nil { selection = [] }
-                        if let hit, let node = doc.graph.node(hit), let layout = layouts[hit] {
+                        if entered == nil, let hit, let node = doc.graph.node(hit), let layout = layouts[hit] {
                             editing = RowEdit.target(node, layout, role: roles[hit], at: point, catalog: catalog)
                         }
                     }
@@ -589,7 +602,14 @@ struct NodeCanvas: View {
                 SpatialTapGesture(count: 2)
                     .onEnded { tap in
                         let point = shown.toCanvas(tap.location)
-                        guard NodeEditing.node(at: point, in: doc.graph.nodes, layouts: layouts) == nil else { return }
+                        if let hit = NodeEditing.node(at: point, in: doc.graph.nodes, layouts: layouts) {
+                            // A subgraph's node: show what is inside.
+                            if let node = doc.graph.node(hit), let def = state.doc.subgraph(node.type) {
+                                enter(def.id, from: shown)
+                            }
+                            return
+                        }
+                        guard entered == nil else { return }
                         if let group = NodeEditing.group(at: point, in: doc) {
                             groupTitle = doc.graph.groups.first { $0.id == group }?.title ?? ""
                             renamingGroup = group
@@ -627,16 +647,25 @@ struct NodeCanvas: View {
             .focused($focused)
             #if os(macOS)
                 .onDeleteCommand {
+                    guard entered == nil else { return }
                     if let group = selectedGroup, selection.isEmpty {
                         deleteGroup(group, doc)
                     } else {
                         deleteSelection(doc)
                     }
                 }
-                .onCopyCommand { copySelection(doc) }
-                .onPasteCommand(of: [.json, .plainText, .utf8PlainText]) { providers in paste(providers, into: doc) }
+                .onCopyCommand { entered == nil ? copySelection(doc) : [] }
+                .onPasteCommand(of: [.json, .plainText, .utf8PlainText]) { providers in
+                    if entered == nil { paste(providers, into: doc) }
+                }
             #endif
+            .onKeyPress(.escape) {
+                guard !path.isEmpty else { return .ignored }
+                leave(to: path.count - 1)
+                return .handled
+            }
             .onKeyPress(phases: .down) { press in
+                guard entered == nil else { return .ignored }
                 // ⌘D duplicates; ⌃M mutes and ⌃B bypasses, as in ComfyUI (⌘M minimizes the window).
                 switch (press.characters.lowercased(), press.modifiers) {
                 case ("d", .command): duplicateSelection(doc)
@@ -648,6 +677,7 @@ struct NodeCanvas: View {
                 return .handled
             }
             .overlay(alignment: .bottomTrailing) { controls(shown, size: size, doc: doc, layouts: layouts) }
+            .overlay(alignment: .topLeading) { if entered != nil { breadcrumb } }
             .overlay(alignment: .top) {
                 if let hint {
                     Text(hint)
@@ -705,9 +735,10 @@ struct NodeCanvas: View {
         return HStack(spacing: 2) {
             Button("Add Node", systemImage: "plus") { adding = AddRequest(point: shown.toCanvas(center)) }
                 .help("Add a node of the server's (or double-click the background)")
+                .disabled(entered != nil)
             Button("Delete", systemImage: "trash") { deleteSelection(doc) }
                 .help("Delete the selected nodes you added")
-                .disabled(!selection.contains { NodeEditing.canDelete($0, in: doc) })
+                .disabled(entered != nil || !selection.contains { NodeEditing.canDelete($0, in: doc) })
             Menu("More", systemImage: "ellipsis.circle") {
                 Button("Duplicate", systemImage: "plus.square.on.square") { duplicateSelection(doc) }
                 Button("Mute", systemImage: "speaker.slash") { mode(.never, doc) }
@@ -717,7 +748,7 @@ struct NodeCanvas: View {
             }
             .menuIndicator(.hidden)
             .fixedSize()
-            .disabled(selection.isEmpty)
+            .disabled(entered != nil || selection.isEmpty)
             .help("Duplicate (⌘D), mute (⌃M), bypass (⌃B) or group (⌘G) the selected nodes")
             Divider().frame(height: 16)
             Button("Zoom Out", systemImage: "minus.magnifyingglass") {
@@ -738,6 +769,47 @@ struct NodeCanvas: View {
         .padding(6)
         .background(.regularMaterial, in: Capsule())
         .padding(12)
+    }
+
+    /// Where the shown subgraph sits: back to the workflow, or to a subgraph around it.
+    private var breadcrumb: some View {
+        HStack(spacing: 4) {
+            Button("Workflow") { leave(to: 0) }
+            ForEach(Array(path.enumerated()), id: \.offset) { i, step in
+                Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.secondary)
+                let name = state.doc.subgraph(step.id)?.name ?? "Subgraph"
+                if i == path.count - 1 {
+                    Text(name).fontWeight(.semibold)
+                } else {
+                    Button(name) { leave(to: i + 1) }
+                }
+            }
+            Text("Read only").font(.caption).foregroundStyle(.secondary).padding(.leading, 6)
+        }
+        .buttonStyle(.borderless)
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(.regularMaterial, in: Capsule())
+        .padding(12)
+        .help("Esc goes back")
+    }
+
+    private func enter(_ id: String, from shown: NodeViewport) {
+        path.append((id, viewport ?? shown))
+        viewport = nil
+        selection = []
+        selectedGroup = nil
+        editing = nil
+        focused = true
+    }
+
+    /// Back out to `depth` subgraphs deep (0: the workflow), in the view it was left in.
+    private func leave(to depth: Int) {
+        guard depth < path.count else { return }
+        viewport = path[depth].viewport
+        path.removeSubrange(depth...)
+        selection = []
     }
 
     /// A link, through its reroutes if it has any.
@@ -913,7 +985,8 @@ struct NodeCanvas: View {
             topLeadingRadius: corner, bottomLeadingRadius: node.collapsed ? corner : 0,
             bottomTrailingRadius: node.collapsed ? corner : 0, topTrailingRadius: corner)
         context.fill(title.path(in: layout.titleRect), with: .color(NodeColors.title))
-        let name = node.title ?? catalog.nodes[node.type]?.displayName ?? node.type
+        let name =
+            node.title ?? catalog.nodes[node.type]?.displayName ?? state.doc.subgraph(node.type)?.name ?? node.type
         context.draw(
             Text(name).font(.system(size: 14)).foregroundStyle(NodeColors.text),
             at: CGPoint(x: layout.titleRect.minX + 12, y: layout.titleRect.midY), anchor: .leading)

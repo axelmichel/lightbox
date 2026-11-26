@@ -228,3 +228,41 @@ private func builtDoc() throws -> WorkflowDocument {
     link.parentReroute = 2
     #expect(NodeEditing.reroutePoints(link, in: g) == [CGPoint(x: 10, y: 10), CGPoint(x: 20, y: 20)])
 }
+
+@Test func aSubgraphIsShownWithItsInputsAndOutputs() throws {
+    var inner = NodeGraph()
+    var encode = GraphNode(id: 1, type: "CLIPTextEncode", position: CGPoint(x: 100, y: 50))
+    encode.inputs = [
+        NodeInputSlot(name: "text", type: "STRING", link: 2), NodeInputSlot(name: "clip", type: "CLIP", link: 1),
+    ]
+    encode.outputs = [NodeOutputSlot(name: "CONDITIONING", type: "CONDITIONING", links: [3])]
+    inner.nodes = [encode]
+    inner.links = [
+        GraphLink(id: 1, origin: GraphLink.subgraphInputID, originSlot: 0, target: 1, targetSlot: 1, type: "CLIP"),
+        GraphLink(id: 2, origin: GraphLink.subgraphInputID, originSlot: 1, target: 1, targetSlot: 0, type: "STRING"),
+        GraphLink(
+            id: 3, origin: 1, originSlot: 0, target: GraphLink.subgraphOutputID, targetSlot: 0, type: "CONDITIONING"),
+    ]
+    var doc = WorkflowDocument()
+    doc.subgraphs = [
+        SubgraphDefinition(
+            id: "sub", name: "Prompt", graph: inner,
+            inputs: [
+                SubgraphSlot(id: "a", name: "clip", type: "CLIP", linkIDs: [1]),
+                SubgraphSlot(id: "b", name: "text", type: "STRING", linkIDs: [2]),
+            ],
+            outputs: [SubgraphSlot(id: "c", name: "CONDITIONING", type: "CONDITIONING", linkIDs: [3])])
+    ]
+    let shown = try #require(NodeEditing.inside("sub", of: doc))
+    let inputs = try #require(shown.graph.node(GraphLink.subgraphInputID))
+    let outputs = try #require(shown.graph.node(GraphLink.subgraphOutputID))
+    #expect(inputs.outputs.map(\.name) == ["clip", "text"])
+    #expect(outputs.inputs.map(\.name) == ["CONDITIONING"] && outputs.inputs[0].link == 3)
+    // Left and right of what is inside.
+    #expect(inputs.position.x < 100 && outputs.position.x > 100)
+    #expect(shown.graph.links.count == 3)
+    // Their sockets are where the links draw from and to.
+    #expect(NodeLayout(inputs, spec: nil).outputPoints.count == 2)
+    #expect(NodeLayout(outputs, spec: nil).inputPoints.count == 1)
+    #expect(NodeEditing.inside("gone", of: doc) == nil)
+}
