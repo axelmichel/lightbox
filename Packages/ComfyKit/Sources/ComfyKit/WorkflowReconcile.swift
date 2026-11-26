@@ -20,6 +20,9 @@ extension WorkflowDocument {
     public func reconciled(with target: WorkflowDocument) -> WorkflowDocument {
         var doc = self
         var g = doc.graph
+        // Inputs of the user's nodes that read the end of a managed chain
+        // (anchors); they follow it when it grows (a LoRA, a face fix).
+        let atEnds = anchoredInputs(graph)
         let wanted = Self.roleNodes(target.graph)
 
         // Managed nodes the target doesn't have, or that repeat a role.
@@ -81,8 +84,75 @@ extension WorkflowDocument {
             }
             g.connect(from: from.origin, from.slot, to: end.node, slot)
         }
+        for input in atEnds {
+            // From where it read, or (that node gone) the first node before it that is still there.
+            guard g.node(input.node) != nil,
+                let start = input.chain.lazy.compactMap({ step in
+                    current[step.role].flatMap { g.node($0) != nil ? (node: $0, slot: step.slot) : nil }
+                }).first,
+                let end = Self.chainEnd(from: start.node, start.slot, type: input.type, in: g, managed: managed)
+            else { continue }
+            let now = g.node(input.node)?.inputs[safe: input.input]?.link.flatMap { g.link($0) }
+            if now?.origin == end.node && now?.originSlot == end.slot { continue }
+            g.connect(from: end.node, end.slot, to: input.node, input.input)
+        }
         doc.graph = g
         return doc
+    }
+
+    /// An input of a node without a role, reading from a managed node's
+    /// output that nothing managed continues: the end of a chain.
+    struct AnchoredInput {
+        var node: Int
+        var input: Int
+        var type: String
+        /// The output it reads, then the ones before it in the chain.
+        var chain: [(role: NodeRole, slot: Int)]
+    }
+
+    func anchoredInputs(_ g: NodeGraph) -> [AnchoredInput] {
+        let managed = Set(g.nodes.compactMap { Self.role(of: $0) == nil ? nil : $0.id })
+        return g.links.compactMap { l in
+            guard managed.contains(l.origin), !managed.contains(l.target), let origin = g.node(l.origin),
+                let role = Self.role(of: origin),
+                let end = Self.chainEnd(from: l.origin, l.originSlot, type: l.type, in: g, managed: managed),
+                end == (l.origin, l.originSlot)
+            else { return nil }
+            // Back up the chain: the managed output of the same type each node reads.
+            var chain = [(role: role, slot: l.originSlot)]
+            var at = origin
+            while chain.count < 64,
+                let back = at.inputs.compactMap({ $0.link.flatMap { g.link($0) } })
+                    .first(where: { $0.type == l.type && managed.contains($0.origin) }),
+                let prev = g.node(back.origin), let prevRole = Self.role(of: prev)
+            {
+                chain.append((prevRole, back.originSlot))
+                at = prev
+            }
+            return AnchoredInput(node: l.target, input: l.targetSlot, type: l.type, chain: chain)
+        }
+    }
+
+    /// Following managed links from an output to managed nodes that give
+    /// the same type on: the last such output, the chain's end.
+    static func chainEnd(from node: Int, _ slot: Int, type: String, in g: NodeGraph, managed: Set<Int>)
+        -> (node: Int, slot: Int)?
+    {
+        var at = (node: node, slot: slot)
+        var seen: Set<Int> = [node]
+        while true {
+            let next = g.links.lazy.filter { $0.origin == at.node && $0.originSlot == at.slot }
+                .compactMap { l -> (node: Int, slot: Int)? in
+                    // The output node ends every chain, whatever outputs it lists.
+                    guard managed.contains(l.target), !seen.contains(l.target), let t = g.node(l.target),
+                        role(of: t)?.kind != .output, let out = t.outputs.firstIndex(where: { $0.type == type })
+                    else { return nil }
+                    return (l.target, out)
+                }.first
+            guard let next else { return at }
+            seen.insert(next.node)
+            at = next
+        }
     }
 
     static func role(of node: GraphNode) -> NodeRole? {

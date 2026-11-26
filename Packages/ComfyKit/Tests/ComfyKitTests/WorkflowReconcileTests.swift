@@ -178,3 +178,73 @@ private func moved(_ doc: WorkflowDocument) -> WorkflowDocument {
     let blocker = try #require(doc.graph.nodes.first)
     #expect(added.position.y > blocker.position.y + blocker.size.height)
 }
+
+/// A node the user added, put between a chain's end and what reads it.
+private func spliced(
+    _ doc: WorkflowDocument, after role: NodeRole, slot: Int, type: String, into consumer: NodeRole, input: String
+) throws -> (WorkflowDocument, Int) {
+    var d = doc
+    let from = try node(d, role).id
+    let to = try node(d, consumer).id
+    var added = GraphNode(id: 0, type: "UserNode", position: CGPoint(x: 5000, y: 0))
+    added.inputs = [NodeInputSlot(name: "in", type: type)]
+    added.outputs = [NodeOutputSlot(name: type, type: type)]
+    let id = d.graph.addNode(added)
+    d.graph.connect(from: from, slot, to: id, 0)
+    let i = try #require(d.graph.node(to)?.inputs.firstIndex { $0.name == input })
+    d.graph.connect(from: id, 0, to: to, i)
+    return (d, id)
+}
+
+private func source(_ doc: WorkflowDocument, _ node: Int) -> Int? {
+    doc.graph.node(node)?.inputs.first?.link.flatMap { doc.graph.link($0)?.origin }
+}
+
+@Test func anUpscalerFollowsTheFaceFix() throws {
+    let c = try kritaCatalog()
+    let (doc, upscaler) = try spliced(
+        try project(request(), c), after: NodeRole(.vaeDecode), slot: 0, type: "IMAGE", into: NodeRole(.output),
+        input: "images")
+    var fixed = request()
+    fixed.faceFix = DetailerRequest(detector: "bbox/face_yolov8m.pt")
+    let done = doc.reconciled(with: try project(fixed, c))
+    // decode → face fix → upscaler → output
+    #expect(source(done, upscaler) == (try node(done, NodeRole(.faceFix)).id))
+    let output = try node(done, NodeRole(.output))
+    #expect(output.inputs.first.flatMap { $0.link.flatMap { done.graph.link($0)?.origin } } == upscaler)
+    #expect(done.reconciled(with: try project(fixed, c)) == done)
+    // Fix off again: back to the decode.
+    let back = done.reconciled(with: try project(request(), c))
+    #expect(source(back, upscaler) == (try node(back, NodeRole(.vaeDecode)).id))
+}
+
+@Test func aModelNodeFollowsANewLora() throws {
+    let c = try kritaCatalog()
+    // After the last LoRA, before the sampler.
+    let (doc, patch) = try spliced(
+        try project(request(), c), after: NodeRole(.lora, key: "b.safetensors"), slot: 0, type: "MODEL",
+        into: NodeRole(.sampler), input: "model")
+    let done = doc.reconciled(
+        with: try project(request(loras: ["a.safetensors", "b.safetensors", "c.safetensors"]), c))
+    #expect(source(done, patch) == (try node(done, NodeRole(.lora, key: "c.safetensors")).id))
+    let sampler = try node(done, NodeRole(.sampler))
+    let model = try #require(sampler.inputs.first { $0.name == "model" })
+    #expect(model.link.flatMap { done.graph.link($0)?.origin } == patch)
+}
+
+@Test func aNodeReadingMidChainStaysThere() throws {
+    let c = try kritaCatalog()
+    var fixed = request()
+    fixed.faceFix = DetailerRequest(detector: "bbox/face_yolov8m.pt")
+    var doc = try project(fixed, c)
+    // The picture before the face fix, on purpose (to compare).
+    let decode = try node(doc, NodeRole(.vaeDecode)).id
+    var added = GraphNode(id: 0, type: "UserNode")
+    added.inputs = [NodeInputSlot(name: "in", type: "IMAGE")]
+    let id = doc.graph.addNode(added)
+    doc.graph.connect(from: decode, 0, to: id, 0)
+    var more = fixed
+    more.handFix = DetailerRequest(detector: "bbox/hand_yolov8s.pt")
+    let done = doc.reconciled(with: try project(more, c))
+    #expect(source(done, id) == decode)
+}
