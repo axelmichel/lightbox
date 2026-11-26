@@ -115,3 +115,49 @@ extension NodeGraph {
         nodes.filter { rect.contains(CGPoint(x: $0.frame.midX, y: $0.position.y)) }.map(\.id)
     }
 }
+
+// MARK: - Native reroutes
+
+extension NodeGraph {
+    /// The reroutes link `id` passes through, from its start to its end.
+    public func rerouteChain(of id: Int) -> [Int] {
+        var chain: [Int] = []
+        var next = link(id)?.parentReroute
+        while let r = next, !chain.contains(r), let reroute = reroutes.first(where: { $0.id == r }) {
+            chain.insert(r, at: 0)
+            next = reroute.parent
+        }
+        return chain
+    }
+
+    /// A new reroute at `position` on link `id`, in its `segment`-th piece
+    /// (0: from the output to the first reroute). Links that share the
+    /// reroutes after it pass through it too, as in LiteGraph. Returns its id.
+    @discardableResult
+    public mutating func addReroute(on id: Int, segment: Int, at position: CGPoint) -> Int? {
+        guard let l = links.firstIndex(where: { $0.id == id }) else { return nil }
+        let chain = rerouteChain(of: id)
+        guard (0...chain.count).contains(segment) else { return nil }
+        lastRerouteID = max(lastRerouteID, reroutes.map(\.id).max() ?? 0) + 1
+        var reroute = GraphReroute(id: lastRerouteID, position: position)
+        reroute.parent = segment > 0 ? chain[segment - 1] : nil
+        if segment < chain.count, let next = reroutes.firstIndex(where: { $0.id == chain[segment] }) {
+            reroute.linkIDs =
+                reroutes[next].linkIDs.contains(id) ? reroutes[next].linkIDs : reroutes[next].linkIDs + [id]
+            reroutes[next].parent = reroute.id
+        } else {
+            reroute.linkIDs = [id]
+            links[l].parentReroute = reroute.id
+        }
+        reroutes.append(reroute)
+        return reroute.id
+    }
+
+    /// Reroute `id` taken out: what passed through it goes straight on.
+    public mutating func removeReroute(_ id: Int) {
+        guard let r = reroutes.first(where: { $0.id == id }) else { return }
+        for i in reroutes.indices where reroutes[i].parent == id { reroutes[i].parent = r.parent }
+        for i in links.indices where links[i].parentReroute == id { links[i].parentReroute = r.parent }
+        reroutes.removeAll { $0.id == id }
+    }
+}

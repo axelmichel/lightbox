@@ -266,3 +266,29 @@ private func builtDoc() throws -> WorkflowDocument {
     #expect(NodeLayout(outputs, spec: nil).inputPoints.count == 1)
     #expect(NodeEditing.inside("gone", of: doc) == nil)
 }
+
+@Test func aLinkIsFoundWhereItIsDrawn() throws {
+    var g = NodeGraph()
+    var a = GraphNode(id: 1, type: "A", position: .zero, size: CGSize(width: 200, height: 60))
+    a.outputs = [NodeOutputSlot(name: "IMAGE", type: "IMAGE", links: [])]
+    var b = GraphNode(id: 2, type: "B", position: CGPoint(x: 600, y: 300), size: CGSize(width: 200, height: 60))
+    b.inputs = [NodeInputSlot(name: "images", type: "IMAGE", link: nil)]
+    g.nodes = [a, b]
+    _ = g.connect(from: 1, 0, to: 2, 0)
+    let layouts = Dictionary(uniqueKeysWithValues: g.nodes.map { ($0.id, NodeLayout($0, spec: nil)) })
+    let from = try #require(layouts[1]?.outputPoints.first)
+    let to = try #require(layouts[2]?.inputPoints.first)
+    let middle = NodeEditing.curvePoint(from, to, 0.5)
+    #expect(NodeEditing.link(at: middle, in: g, layouts: layouts)?.link == 1)
+    #expect(NodeEditing.link(at: CGPoint(x: middle.x, y: middle.y - 40), in: g, layouts: layouts) == nil)
+    // Past a reroute it is the second piece.
+    let added = g.addReroute(on: 1, segment: 0, at: middle)
+    let reroute = try #require(added)
+    let late = NodeEditing.curvePoint(middle, to, 0.5)
+    #expect(NodeEditing.link(at: late, in: g, layouts: layouts)?.segment == 1)
+    #expect(NodeEditing.reroute(at: CGPoint(x: middle.x + 3, y: middle.y), in: g) == reroute)
+    var doc = WorkflowDocument()
+    doc.graph = g
+    let moved = NodeEditing.movedReroute(doc, reroute, by: CGSize(width: 10, height: 0))
+    #expect(moved.graph.reroutes[0].position.x == (middle.x + 10).rounded())
+}

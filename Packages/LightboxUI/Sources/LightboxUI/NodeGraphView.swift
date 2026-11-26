@@ -390,6 +390,11 @@ struct NodeCanvas: View {
         var point: CGPoint
     }
 
+    private struct RerouteDrag {
+        var id: Int
+        var delta = CGSize.zero
+    }
+
     private struct GroupDrag {
         var id: Int
         var nodes: Set<Int>
@@ -415,6 +420,8 @@ struct NodeCanvas: View {
     /// A group being dragged by its title, with what it takes along.
     @State private var groupDrag: GroupDrag?
     @State private var selectedGroup: Int?
+    @State private var rerouteDrag: RerouteDrag?
+    @State private var selectedReroute: Int?
     /// A group being renamed, and the name typed.
     @State private var renamingGroup: Int?
     @State private var groupTitle = ""
@@ -434,6 +441,7 @@ struct NodeCanvas: View {
     /// The document as shown: with the nodes being dragged where they are now.
     private var doc: WorkflowDocument {
         if let entered, let inside = NodeEditing.inside(entered, of: state.doc) { return inside }
+        if let drag = rerouteDrag { return NodeEditing.movedReroute(state.doc, drag.id, by: drag.delta) }
         if let drag = groupDrag {
             return NodeEditing.movedGroup(
                 state.doc, drag.id, nodes: drag.nodes, reroutes: drag.reroutes, by: drag.delta)
@@ -477,6 +485,11 @@ struct NodeCanvas: View {
                     context.fill(
                         Path(ellipseIn: CGRect(x: p.x - 5, y: p.y - 5, width: 10, height: 10)),
                         with: .color(NodeColors.label))
+                    if reroute.id == selectedReroute {
+                        context.stroke(
+                            Path(ellipseIn: CGRect(x: p.x - 9, y: p.y - 9, width: 18, height: 18)),
+                            with: .color(NodeColors.selection), lineWidth: 2 / shown.scale)
+                    }
                 }
                 for node in doc.graph.nodes {
                     guard let layout = layouts[node.id], layout.bounds.intersects(seen) else { continue }
@@ -528,7 +541,7 @@ struct NodeCanvas: View {
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { value in
-                        if panStart == nil, nodeDrag == nil, linkDrag == nil {
+                        if panStart == nil, nodeDrag == nil, linkDrag == nil, rerouteDrag == nil, groupDrag == nil {
                             let start = shown.toCanvas(value.startLocation)
                             if entered != nil {
                                 panStart = shown
@@ -536,6 +549,10 @@ struct NodeCanvas: View {
                                 // A socket: draw (or pull off) a link. Hold the view still.
                                 viewport = shown
                                 linkDrag = socket
+                            } else if let reroute = NodeEditing.reroute(at: start, in: doc.graph) {
+                                viewport = shown
+                                selectedReroute = reroute
+                                rerouteDrag = RerouteDrag(id: reroute)
                             } else if let hit = NodeEditing.node(at: start, in: doc.graph.nodes, layouts: layouts) {
                                 if !selection.contains(hit) {
                                     selection = NodeEditing.select(hit, in: selection, extend: extendsSelection)
@@ -555,6 +572,10 @@ struct NodeCanvas: View {
                         }
                         if linkDrag != nil {
                             linkDrag?.point = shown.toCanvas(value.location)
+                        } else if rerouteDrag != nil {
+                            rerouteDrag?.delta = CGSize(
+                                width: value.translation.width / shown.scale,
+                                height: value.translation.height / shown.scale)
                         } else if groupDrag != nil {
                             groupDrag?.delta = CGSize(
                                 width: value.translation.width / shown.scale,
@@ -570,6 +591,10 @@ struct NodeCanvas: View {
                     .onEnded { _ in
                         if let drag = linkDrag {
                             dropLink(drag, doc, layouts)
+                        } else if let drag = rerouteDrag, drag.delta != .zero {
+                            onStructure(
+                                .document(
+                                    NodeEditing.movedReroute(state.doc, drag.id, by: drag.delta), name: "Move Reroute"))
                         } else if let drag = groupDrag, drag.delta != .zero {
                             onMove(
                                 NodeEditing.movedGroup(
@@ -578,6 +603,7 @@ struct NodeCanvas: View {
                             onMove(NodeEditing.moved(state.doc, drag.nodes, by: drag.delta))
                         }
                         linkDrag = nil
+                        rerouteDrag = nil
                         groupDrag = nil
                         nodeDrag = nil
                         panStart = nil
@@ -590,9 +616,12 @@ struct NodeCanvas: View {
                         let hit = NodeEditing.node(at: point, in: doc.graph.nodes, layouts: layouts)
                         focused = true
                         selection = NodeEditing.select(hit, in: selection, extend: extendsSelection)
-                        // A group is selected by its title, alone.
-                        selectedGroup = hit == nil ? NodeEditing.group(at: point, in: doc) : nil
-                        if selectedGroup != nil { selection = [] }
+                        // A reroute, or a group by its title, is selected alone.
+                        selectedReroute =
+                            hit == nil && entered == nil ? NodeEditing.reroute(at: point, in: doc.graph) : nil
+                        selectedGroup =
+                            hit == nil && selectedReroute == nil ? NodeEditing.group(at: point, in: doc) : nil
+                        if selectedGroup != nil || selectedReroute != nil { selection = [] }
                         if entered == nil, let hit, let node = doc.graph.node(hit), let layout = layouts[hit] {
                             editing = RowEdit.target(node, layout, role: roles[hit], at: point, catalog: catalog)
                         }
@@ -609,8 +638,15 @@ struct NodeCanvas: View {
                             }
                             return
                         }
-                        guard entered == nil else { return }
-                        if let group = NodeEditing.group(at: point, in: doc) {
+                        guard entered == nil, NodeEditing.reroute(at: point, in: doc.graph) == nil else { return }
+                        if let hit = NodeEditing.link(
+                            at: point, in: doc.graph, layouts: layouts, tolerance: max(4, 6 / shown.scale))
+                        {
+                            // On a link: a reroute there.
+                            var changed = doc
+                            selectedReroute = changed.graph.addReroute(on: hit.link, segment: hit.segment, at: point)
+                            onStructure(.document(changed, name: "Add Reroute"))
+                        } else if let group = NodeEditing.group(at: point, in: doc) {
                             groupTitle = doc.graph.groups.first { $0.id == group }?.title ?? ""
                             renamingGroup = group
                         } else {
@@ -648,7 +684,12 @@ struct NodeCanvas: View {
             #if os(macOS)
                 .onDeleteCommand {
                     guard entered == nil else { return }
-                    if let group = selectedGroup, selection.isEmpty {
+                    if let reroute = selectedReroute, selection.isEmpty {
+                        var changed = doc
+                        changed.graph.removeReroute(reroute)
+                        onStructure(.document(changed, name: "Delete Reroute"))
+                        selectedReroute = nil
+                    } else if let group = selectedGroup, selection.isEmpty {
                         deleteGroup(group, doc)
                     } else {
                         deleteSelection(doc)

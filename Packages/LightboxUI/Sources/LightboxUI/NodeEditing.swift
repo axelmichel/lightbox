@@ -264,6 +264,58 @@ extension NodeEditing {
         return (d, g.id)
     }
 
+    /// The reroute whose dot is at `point`.
+    static func reroute(at point: CGPoint, in g: NodeGraph, radius: Double = 8) -> Int? {
+        g.reroutes.last { hypot($0.position.x - point.x, $0.position.y - point.y) <= radius }?.id
+    }
+
+    /// `doc` with reroute `id` moved by `delta`.
+    static func movedReroute(_ doc: WorkflowDocument, _ id: Int, by delta: CGSize) -> WorkflowDocument {
+        var d = doc
+        for i in d.graph.reroutes.indices where d.graph.reroutes[i].id == id {
+            d.graph.reroutes[i].position.x = (d.graph.reroutes[i].position.x + delta.width).rounded()
+            d.graph.reroutes[i].position.y = (d.graph.reroutes[i].position.y + delta.height).rounded()
+        }
+        return d
+    }
+
+    /// A point on the curve a link is drawn with between `a` and `b`
+    /// (LiteGraph's: level handles a quarter of the distance long).
+    static func curvePoint(_ a: CGPoint, _ b: CGPoint, _ t: Double) -> CGPoint {
+        let handle = hypot(b.x - a.x, b.y - a.y) * 0.25
+        let c1 = CGPoint(x: a.x + handle, y: a.y)
+        let c2 = CGPoint(x: b.x - handle, y: b.y)
+        let u = 1 - t
+        func mix(_ p: Double, _ q: Double, _ r: Double, _ s: Double) -> Double {
+            u * u * u * p + 3 * u * u * t * q + 3 * u * t * t * r + t * t * t * s
+        }
+        return CGPoint(x: mix(a.x, c1.x, c2.x, b.x), y: mix(a.y, c1.y, c2.y, b.y))
+    }
+
+    /// The link drawn at `point`, and which piece of it (0: from the output
+    /// to its first reroute): where a double-click puts a reroute.
+    static func link(
+        at point: CGPoint, in g: NodeGraph, layouts: [Int: NodeLayout], tolerance: Double = 6
+    ) -> (link: Int, segment: Int)? {
+        for link in g.links.reversed() {
+            guard let from = layouts[link.origin]?.outputPoints, from.indices.contains(link.originSlot),
+                let to = layouts[link.target]?.inputPoints, to.indices.contains(link.targetSlot)
+            else { continue }
+            let points = [from[link.originSlot]] + reroutePoints(link, in: g) + [to[link.targetSlot]]
+            for (i, (a, b)) in zip(points, points.dropFirst()).enumerated() {
+                let box = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(b.x - a.x), height: abs(b.y - a.y))
+                guard box.insetBy(dx: -tolerance, dy: -tolerance).contains(point) else { continue }
+                let steps = max(8, Int(hypot(b.x - a.x, b.y - a.y) / 4))
+                let near = (0...steps).contains { n in
+                    let p = curvePoint(a, b, Double(n) / Double(steps))
+                    return hypot(p.x - point.x, p.y - point.y) <= tolerance
+                }
+                if near { return (link.id, i) }
+            }
+        }
+        return nil
+    }
+
     /// The native reroutes a link passes through, from its start to its end.
     static func reroutePoints(_ link: GraphLink, in g: NodeGraph) -> [CGPoint] {
         var points: [CGPoint] = []

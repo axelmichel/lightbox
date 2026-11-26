@@ -261,6 +261,10 @@ diese werden vorerst nur gezeigt.
 Inneres, mit seinen Ein- und Ausgängen als zwei Knoten links und rechts; eine Leiste oben („Workflow › Name“) und Esc
 führen zurück, in die Ansicht von vorher. Innen nur ansehen: verschieben und zoomen, nichts bearbeiten.
 
+**7.4 Reroutes bearbeiten.** Doppelklick auf einen Link setzt dort einen nativen Reroute (in LiteGraphs Kette, auch
+bei Links, die sich einen teilen); Reroutes lassen sich ziehen, anklicken und mit Entf löschen, der Link läuft dann
+direkt weiter. Gilt auch für Lightboxs eigene Links, denn Reroutes ändern am Graphen nichts.
+
 ### Phase 8: Workflow-Presets für neue Engines
 
 Ziel: Ein Modell, das Lightbox nicht kennt, läuft ohne neuen Code, sobald es in ComfyUI einen funktionierenden
