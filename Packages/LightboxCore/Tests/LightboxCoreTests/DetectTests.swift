@@ -34,6 +34,7 @@ private func detect(_ name: String, metadata: [String: String]? = nil, loras: [S
 @Test(arguments: [
     ("ponyDiffusionV6XL_v6.safetensors", ModelFamily.pony, PictureStyle.anime),
     ("ponyRealism_v22.safetensors", .pony, .photo),
+    ("pdv9-made-up.safetensors", .pony, .anime),
     ("sdxl/RealVisXL_V4.0.safetensors", .sdxl, .photo),
     ("animagine-xl-3.1.safetensors", .sdxl, .anime),
     ("dreamshaperXL_v21.safetensors", .sdxl, .illustration),
@@ -63,6 +64,16 @@ func detectsFamilyAndStyle(_ name: String, _ family: ModelFamily, _ style: Pictu
     #expect(p.stylePrompt.hasPrefix("score_9, score_8_up"))
     #expect(p.stylePrompt.contains("source_anime"))
     #expect(p.negativePrompt.hasPrefix("score_4"))
+}
+
+@Test func aFamilyPickedByHandStaysForACheckpointWhoseNameDoesntSay() {
+    let picked = PresetDetector.detect(checkpoint: "madeUpMix_v3.safetensors", chosen: .pony)
+    #expect(picked.family == .pony, "\(picked.notes)")
+    #expect(picked.notes.first?.contains("picked in the preset") == true)
+    // The name wins where it says something.
+    #expect(PresetDetector.detect(checkpoint: "ponyRealism_v22.safetensors", chosen: .illustrious).family == .pony)
+    // Not for a split family on a checkpoint.
+    #expect(PresetDetector.detect(checkpoint: "madeUpMix_v3.safetensors", chosen: .flux).family == .sdxl)
 }
 
 @Test func shortFragmentsMatchWholeWordsOnly() {

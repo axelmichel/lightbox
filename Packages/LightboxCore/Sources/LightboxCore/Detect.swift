@@ -166,8 +166,9 @@ public enum PresetDetector {
     /// `diffusionModel`: the file is a bare diffusion model (ComfyUI's
     /// `diffusion_models` folder), not a checkpoint; one Lightbox doesn't
     /// know is unsupported rather than SDXL.
-    /// `chosen`: the family picked in the preset; a split family is kept
-    /// for a diffusion model whose name and header don't say (fine-tunes).
+    /// `chosen`: the family picked in the preset; it is kept for a model
+    /// whose name and header don't say (fine-tunes): a split family for a
+    /// diffusion model, a checkpoint family (Pony, Illustrious) for a checkpoint.
     public static func detect(
         checkpoint: String, metadata: [String: String]? = nil, loras: [String] = [], diffusionModel: Bool = false,
         chosen: ModelFamily? = nil
@@ -242,6 +243,11 @@ public enum PresetDetector {
                 "Not supported: a diffusion model whose name doesn't say what it is. If it is a fine-tune of "
                     + "Flux, Flux 2, Z-Image, Anima or Krea 2, pick that family under Model."
             ]
+        }
+        // A checkpoint family picked by hand stays for a fine-tune whose name doesn't say.
+        if family == nil, !diffusionModel, let chosen, !chosen.isSplit, chosen != .unsupported, chosen != .sdxl {
+            family = chosen
+            notes.append("\(chosen.label): picked in the preset; the file's name and header don't say.")
         }
         if family == nil {
             family = .sdxl
@@ -430,7 +436,8 @@ enum Fragments {
     /// Not "flux1-krea", which is Flux.
     static let krea2 = ["krea2"]
     static let illustrious = ["illustrious", "noobai", "noob", "ilxl", "ill"]
-    static let pony = ["pony", "pdxl", "autismmix"]
+    /// "pdv": Pony Diffusion V…, a whole word ("pdv6").
+    static let pony = ["pony", "pdxl", "pdv", "autismmix"]
     static let sdxl = [
         "juggernaut", "realvis", "zavychroma", "copax", "animagine", "albedobase", "proteus", "playground",
         "leosam", "halcyon", "nightvision", "crystalclear", "dynavision", "starlight", "wildcard",
