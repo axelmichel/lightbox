@@ -177,6 +177,14 @@ struct NodeGraphView: View {
             if let replacing { doc.graph.removeLink(replacing) }
             guard doc.graph.connect(from: origin, slot, to: target, input) != nil else { return }
             name = "Connect"
+            // A LoRA hung into the model chain becomes one of the form's; Lightbox makes its node from then on.
+            let hooked = NodeEditing.hookedLoras(doc, catalog: app.catalog)
+            if !hooked.isEmpty {
+                doc.graph.removeNodes(Set(hooked.map(\.node)))
+                save(doc, name, state)
+                app.generation.applyGraph(hooked.map(\.change), app) { saveStandard(state) }
+                return
+            }
         case .disconnect(let link):
             doc.graph.removeLink(link)
             name = "Disconnect"
@@ -185,9 +193,26 @@ struct NodeGraphView: View {
             doc.graph.addNode(type, spec: spec, at: point)
             name = "Add Node"
         case .delete(let nodes):
-            doc.graph.removeNodes(Set(nodes.filter { NodeEditing.canDelete($0, in: doc) }))
-            name = nodes.count == 1 ? "Delete Node" : "Delete Nodes"
+            // Added nodes go; Lightbox's that stand for a setting switch it off.
+            var switches: [GraphChange] = []
+            var removed: Set<Int> = []
+            for node in nodes {
+                switch NodeEditing.deletion(node, in: doc) {
+                case .remove: removed.insert(node)
+                case .switchOff(let change): switches.append(change)
+                case .keep: break
+                }
+            }
+            doc.graph.removeNodes(removed)
+            save(doc, nodes.count == 1 ? "Delete Node" : "Delete Nodes", state)
+            if !switches.isEmpty { app.generation.applyGraph(switches, app) { saveStandard(state) } }
+            return
         }
+        save(doc, name, state)
+    }
+
+    /// Keep `doc` in the workflow shown (the standard graph becomes one first).
+    private func save(_ doc: WorkflowDocument, _ name: String, _ state: GenerationModel.GraphState) {
         guard doc != state.doc, let id = state.workflow?.id ?? saveStandard(state) else { return }
         app.generation.showWorkflow(id, app)
         app.workflows.change(id, to: doc, name, undo: undo)
@@ -605,11 +630,12 @@ struct NodeCanvas: View {
         if let id = drag.replacing { onStructure(.disconnect(id)) }
     }
 
-    /// Delete the selected nodes the user added; Lightbox's own stay.
+    /// Delete the selected nodes: added ones go, Lightbox's switch their
+    /// setting off (a LoRA, a fix, a guide), the required ones stay.
     private func deleteSelection(_ doc: WorkflowDocument) {
         let deletable = selection.filter { NodeEditing.canDelete($0, in: doc) }
         if deletable.count < selection.count {
-            withAnimation { hint = "Lightbox's own nodes stay; switch their settings off in the Generate panel." }
+            withAnimation { hint = "The loaders, prompts, sampler and output stay; the graph can't work without them." }
         }
         guard !deletable.isEmpty else { return }
         onStructure(.delete(Array(deletable)))

@@ -105,3 +105,29 @@ func changesComeBackFromTheGraph(_ change: GraphChange) throws {
         ])
     #expect(PresetOverrides().entries(for: preset).isEmpty)
 }
+
+@Test func deletingSwitchesSettingsOff() {
+    var t = target()
+    // An extra LoRA goes; a preset LoRA is switched off for the workflow.
+    t.apply(.loraOff("grain.safetensors"))
+    #expect(t.extraLoras.isEmpty)
+    t.apply(.loraOff("ink-style.safetensors"))
+    #expect(t.overrides.disabledLoras == ["ink-style.safetensors"])
+    #expect(t.effectivePreset.loras.first?.isActive == false)
+    #expect(t.preset.loras.first?.isActive == true)
+    // Hung in again, it is on again.
+    t.apply(.addLora(name: "ink-style.safetensors", strength: 0.5, clipStrength: 0.5))
+    #expect(t.overrides.disabledLoras == nil)
+    #expect(t.extraLoras.map(\.name) == ["ink-style.safetensors"])
+    t.apply(.faceFixOff)
+    #expect(!t.finish.fixFaces)
+    t.apply(.guideOff(0))
+    #expect(t.removedGuides == [0])
+}
+
+@Test func aLoraHungInComesBackFromTheGraph() throws {
+    var t = target()
+    t.apply(.addLora(name: "new-look.safetensors", strength: 0.7, clipStrength: 0.4))
+    let loras = try settings(t).loras
+    #expect(loras.last == LoraRequest(name: "new-look.safetensors", strength: 0.7, clipStrength: 0.4))
+}

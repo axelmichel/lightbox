@@ -16,10 +16,12 @@ public struct PresetOverrides: Codable, Hashable, Sendable {
     public var clipSkip: Int?
     public var guidance: Double?
     public var shift: Double?
+    /// The preset's LoRAs switched off in the graph, by file name.
+    public var disabledLoras: [String]?
 
     /// One of the values, to list or reset it.
     public enum Field: CaseIterable, Sendable {
-        case checkpoint, vae, textEncoders, sampler, scheduler, steps, cfg, clipSkip, guidance, shift
+        case checkpoint, vae, textEncoders, sampler, scheduler, steps, cfg, clipSkip, guidance, shift, disabledLoras
     }
 
     public init() {}
@@ -48,6 +50,7 @@ public struct PresetOverrides: Codable, Hashable, Sendable {
         case .clipSkip: clipSkip = nil
         case .guidance: guidance = nil
         case .shift: shift = nil
+        case .disabledLoras: disabledLoras = nil
         }
     }
 
@@ -63,6 +66,9 @@ public struct PresetOverrides: Codable, Hashable, Sendable {
         if let clipSkip { p.clipSkip = clipSkip }
         if let guidance { p.guidance = guidance }
         if let shift { p.shift = shift }
+        if let disabledLoras {
+            for i in p.loras.indices where disabledLoras.contains(p.loras[i].name) { p.loras[i].enabled = false }
+        }
         return p
     }
 
@@ -79,6 +85,10 @@ public struct PresetOverrides: Codable, Hashable, Sendable {
         if clipSkip == preset.clipSkip { o.clipSkip = nil }
         if guidance == preset.guidance { o.guidance = nil }
         if shift == preset.shift { o.shift = nil }
+        // Only LoRAs the preset has and uses can be switched off.
+        let active = Set(preset.loras.filter(\.isActive).map(\.name))
+        let off = (disabledLoras ?? []).filter { active.contains($0) }
+        o.disabledLoras = off.isEmpty ? nil : off
         return o
     }
 }

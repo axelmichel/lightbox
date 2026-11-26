@@ -337,6 +337,7 @@ public final class GenerationModel {
                 reach.strength, reach.start, reach.end
             )
         }
+        for i in t.removedGuides.sorted(by: >) where guides.indices.contains(i) { guides.remove(at: i) }
         if app.library.finish != t.finish { app.library.finish = t.finish }
         guard t.overrides != before.overrides else { return }
         let id = shownWorkflow(app, preset: t.preset)?.id ?? saveStandard()

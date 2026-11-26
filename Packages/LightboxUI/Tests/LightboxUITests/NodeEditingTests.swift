@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import Testing
 
 @testable import ComfyKit
@@ -88,4 +89,56 @@ private func spec(_ inputs: [(String, String)], outputs: [String], category: Str
     #expect(NodeSearch.results("image", in: c) == ["ImageScaleBy", "SaveImage"])
     #expect(NodeSearch.results("ksam", in: c) == ["KSampler"])
     #expect(NodeSearch.results("sampling", in: c) == ["KSampler"])  // by category
+}
+
+/// A standard graph without a server catalog: values by name, every input there.
+private func builtDoc() throws -> WorkflowDocument {
+    var r = GenerationRequest(
+        checkpoint: "photo-xl.safetensors", loras: [LoraRequest(name: "ink.safetensors", strength: 0.6)],
+        positive: "a fox", negative: "lowres", seed: 1, clipSkip: 2,
+        faceFix: DetailerRequest(detector: "face.pt"))
+    r.guides = [
+        GuideRequest(
+            setup: .controlNet(model: "depth.safetensors", unionType: nil, extractor: nil), image: Data(),
+            filename: "g.png")
+    ]
+    return try WorkflowDocument(WorkflowBuilder.build(r, catalog: ComfyCatalog()), catalog: ComfyCatalog())
+}
+
+@Test func deletingANodeMeansWhatItStandsFor() throws {
+    let doc = try builtDoc()
+    func node(_ role: NodeRole) throws -> Int { try #require(doc.roles.first { $0.value == role }?.key) }
+    #expect(
+        NodeEditing.deletion(try node(NodeRole(.lora, key: "ink.safetensors")), in: doc)
+            == .switchOff(.loraOff("ink.safetensors")))
+    #expect(NodeEditing.deletion(try node(NodeRole(.clipSkip)), in: doc) == .switchOff(.clipSkip(1)))
+    #expect(NodeEditing.deletion(try node(NodeRole(.faceFix)), in: doc) == .switchOff(.faceFixOff))
+    #expect(NodeEditing.deletion(try node(NodeRole(.guide, key: "0")), in: doc) == .switchOff(.guideOff(0)))
+    // Parts and required nodes stay.
+    #expect(NodeEditing.deletion(try node(NodeRole(.guide, .loader, key: "0")), in: doc) == .keep)
+    #expect(NodeEditing.deletion(try node(NodeRole(.faceFix, .detector)), in: doc) == .keep)
+    for role in [NodeRole(.checkpoint), NodeRole(.sampler), NodeRole(.positive), NodeRole(.output)] {
+        #expect(NodeEditing.deletion(try node(role), in: doc) == .keep, "\(role)")
+    }
+}
+
+@Test func aLoraLoaderHungIntoTheChainIsTheForms() throws {
+    var doc = try builtDoc()
+    let checkpoint = try #require(doc.roles.first { $0.value == NodeRole(.checkpoint) }?.key)
+    let sampler = try #require(doc.roles.first { $0.value == NodeRole(.sampler) }?.key)
+    var lora = GraphNode(id: 0, type: "LoraLoader")
+    lora.inputs = [NodeInputSlot(name: "model", type: "MODEL"), NodeInputSlot(name: "clip", type: "CLIP")]
+    lora.outputs = [NodeOutputSlot(name: "MODEL", type: "MODEL"), NodeOutputSlot(name: "CLIP", type: "CLIP")]
+    lora.widgetsValues = .object([
+        "lora_name": .string("new-look.safetensors"), "strength_model": .double(0.7), "strength_clip": .double(0.4),
+    ])
+    let id = doc.graph.addNode(lora)
+    doc.graph.connect(from: checkpoint, 0, to: id, 0)
+    // Not yet feeding anything of Lightbox's: not in the chain.
+    #expect(NodeEditing.hookedLoras(doc, catalog: ComfyCatalog()).isEmpty)
+    let model = try #require(doc.graph.node(sampler)?.inputs.firstIndex { $0.name == "model" })
+    doc.graph.connect(from: id, 0, to: sampler, model)
+    let hooked = NodeEditing.hookedLoras(doc, catalog: ComfyCatalog())
+    #expect(hooked.map(\.node) == [id])
+    #expect(hooked.first?.change == .addLora(name: "new-look.safetensors", strength: 0.7, clipStrength: 0.4))
 }

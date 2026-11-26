@@ -24,6 +24,14 @@ enum GraphChange: Equatable {
     case guide(index: Int, strength: Double, start: Double, end: Double)
     case faceFix(Double)
     case handFix(Double)
+    /// A LoRA hung into the model chain in the graph.
+    case addLora(name: String, strength: Double, clipStrength: Double)
+    /// A LoRA's node deleted: an extra one goes, a preset's is switched off.
+    case loraOff(String)
+    case faceFixOff
+    case handFixOff
+    /// A guide's node deleted: the guide goes from the form.
+    case guideOff(Int)
 
     /// What changed between two readings of a graph: `old` what the form
     /// made, `new` what the graph holds now. Prompts and pictures are
@@ -84,6 +92,8 @@ struct GraphTarget: Equatable {
     var seedText = ""
     var extraLoras: [LoraSlot] = []
     var guides: [GuideReach] = []
+    /// Guides taken out, by their place in the form.
+    var removedGuides: Set<Int> = []
     var finish = FinishSettings()
 
     /// The preset the workflow generates with.
@@ -121,6 +131,17 @@ struct GraphTarget: Equatable {
             guides[i] = GuideReach(strength: strength, start: start, end: end)
         case .faceFix(let v): finish.faceStrength = v
         case .handFix(let v): finish.handStrength = v
+        case .addLora(let name, let strength, let clip):
+            overrides.disabledLoras?.removeAll { $0 == name }
+            apply(.lora(name: name, strength: strength, clipStrength: clip))
+        case .loraOff(let name):
+            extraLoras.removeAll { $0.name == name }
+            if preset.loras.contains(where: { $0.name == name && $0.isActive }) {
+                overrides.disabledLoras = (overrides.disabledLoras ?? []).filter { $0 != name } + [name]
+            }
+        case .faceFixOff: finish.fixFaces = false
+        case .handFixOff: finish.fixHands = false
+        case .guideOff(let i): removedGuides.insert(i)
         }
         overrides = overrides.trimmed(for: preset)
     }
@@ -147,6 +168,7 @@ extension PresetOverrides {
                 case .clipSkip: "CLIP skip: \(clipSkip ?? 1) (preset \(preset.clipSkip))"
                 case .guidance: "Guidance: \(number(guidance ?? 0)) (preset \(number(preset.guidance)))"
                 case .shift: "Shift: \(number(shift ?? 0)) (preset \(number(preset.shift)))"
+                case .disabledLoras: "LoRA off: \((disabledLoras ?? []).map(file).joined(separator: ", ")) (preset on)"
                 }
             return (field, text)
         }

@@ -54,10 +54,53 @@ extension NodeEditing {
         return nil
     }
 
-    /// Whether a node can be deleted: those Lightbox makes stay (switch them
-    /// off in the Generate panel); those added in the graph can go.
+    enum Deletion: Equatable {
+        /// Added in the graph: it goes.
+        case remove
+        /// One of Lightbox's that stands for a setting: deleting it switches that off.
+        case switchOff(GraphChange)
+        /// One the graph can't do without (loaders, sampler, …), or a part of one.
+        case keep
+    }
+
+    /// What deleting a node means.
+    static func deletion(_ node: Int, in doc: WorkflowDocument) -> Deletion {
+        guard doc.graph.node(node) != nil else { return .keep }
+        guard let role = doc.roles[node] else { return .remove }
+        guard role.part == nil else { return .keep }
+        switch role.kind {
+        case .lora: return role.key.map { .switchOff(.loraOff($0)) } ?? .keep
+        case .clipSkip: return .switchOff(.clipSkip(1))
+        case .faceFix: return .switchOff(.faceFixOff)
+        case .handFix: return .switchOff(.handFixOff)
+        case .guide: return role.key.flatMap(Int.init).map { .switchOff(.guideOff($0)) } ?? .keep
+        default: return .keep
+        }
+    }
+
     static func canDelete(_ node: Int, in doc: WorkflowDocument) -> Bool {
-        doc.graph.node(node) != nil && doc.roles[node] == nil
+        deletion(node, in: doc) != .keep
+    }
+
+    /// LoRA loaders added in the graph and hung into the model chain: their
+    /// model input is linked and their model output feeds one of Lightbox's
+    /// nodes. Such a LoRA becomes an extra LoRA of the form.
+    static func hookedLoras(_ doc: WorkflowDocument, catalog: ComfyCatalog) -> [(node: Int, change: GraphChange)] {
+        let roles = doc.roles
+        return doc.graph.nodes.compactMap { node in
+            guard node.type == "LoraLoader", roles[node.id] == nil,
+                node.inputs.first(where: { $0.name == "model" })?.link != nil,
+                let out = node.outputs.first,
+                out.links.contains(where: { id in
+                    doc.graph.link(id).map { roles[$0.target] != nil } ?? false
+                })
+            else { return nil }
+            let spec = catalog.nodes[node.type]
+            guard let name = node.widgetValue("lora_name", spec: spec)?.string, !name.isEmpty else { return nil }
+            let strength = node.widgetValue("strength_model", spec: spec)?.double ?? 1
+            let clip = node.widgetValue("strength_clip", spec: spec)?.double ?? strength
+            return (node.id, .addLora(name: name, strength: strength, clipStrength: clip))
+        }
     }
 }
 

@@ -159,3 +159,22 @@ private let png = Data(
     let old = try JSONDecoder.gallery.decode(WorkflowRun.self, from: Data(json.utf8))
     #expect((old.file, old.node) == ("ab.json", "9"))
 }
+
+@Test func presetLorasCanBeSwitchedOffInAWorkflow() throws {
+    let preset = GenerationPreset(
+        name: "Ink", checkpoint: "ink-xl.safetensors",
+        loras: [LoraSlot(name: "ink.safetensors", strength: 0.6), LoraSlot(name: "grain.safetensors", strength: 0.3)])
+    var o = PresetOverrides()
+    o.disabledLoras = ["ink.safetensors", "gone.safetensors"]
+    o = o.trimmed(for: preset)
+    #expect(o.disabledLoras == ["ink.safetensors"])  // one the preset doesn't have is dropped
+    #expect(o.fields == [.disabledLoras])
+    let p = o.applied(to: preset)
+    #expect(p.loras.map(\.isActive) == [false, true])
+    // Composed, it isn't loaded; the preset itself keeps it.
+    let sent = try compose(PromptInput(preset: p, prompt: "a fox", rating: .allAges))
+    #expect(sent.loras.map(\.name) == ["grain.safetensors"])
+    #expect(preset.loras[0].isActive)
+    o.reset(.disabledLoras)
+    #expect(o.isEmpty)
+}
