@@ -269,7 +269,10 @@ Workflows · Live-Vorschau am Knoten · iPad-Touch.
   Workflows löschen“; die Alternative „Workflows behalten“ lässt sie ohne Preset stehen.
 - **F3 (vor 4.3), entschieden:** Die Workflow-Auswahl gilt pro Preset und übersteht einen Neustart; beim
   Wechsel des Presets erscheint dessen zuletzt gewählter Workflow (oder „Standard“).
-- **F4 (vor 6.2)** Sollen in der Knotensuche alle Knoten des Servers erscheinen oder zuerst eine kuratierte Auswahl?
+- **F4 (vor 6.2), vorläufig entschieden:** Ohne Suchbegriff zeigt die Knotensuche eine kuratierte Auswahl
+  (Upscaler, Bildbearbeitung, Speichern); mit Suchbegriff werden alle Knoten des Servers durchsucht.
+- **6.1 und 6.2 zusammen:** Verbinden ergibt erst mit eigenen (freien) Knoten etwas, also werden beide Schritte
+  gemeinsam gebaut und abgenommen.
 
 ## 9. Risiken
 

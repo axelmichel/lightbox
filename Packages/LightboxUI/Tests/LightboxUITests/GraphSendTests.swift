@@ -1,4 +1,5 @@
 import ComfyKit
+import CoreGraphics
 import Foundation
 import LightboxCore
 import Testing
@@ -157,4 +158,57 @@ func serverRefusalsPointAtTheNode() async throws {
     } catch {
         #expect(GraphSend.nodeMessages(error)[loader] != nil, "\(error)")
     }
+}
+
+/// The plan's test: an upscaler hung between the decode and the output.
+private func withUpscaler(_ c: ComfyCatalog) throws -> (WorkflowDocument, scale: Int) {
+    var doc = try graph(request("a lighthouse"), c)
+    let decode = try #require(doc.roles.first { $0.value == NodeRole(.vaeDecode) }?.key)
+    let output = try #require(doc.roles.first { $0.value == NodeRole(.output) }?.key)
+    let spec = try #require(c.nodes["ImageScaleBy"])
+    let scale = doc.graph.addNode("ImageScaleBy", spec: spec, at: CGPoint(x: 3000, y: 0))
+    let i = try #require(doc.graph.index(of: scale))
+    doc.graph.nodes[i].setWidgetValue("scale_by", .double(2), spec: spec)
+    #expect(NodeEditing.linkProblem(doc, from: decode, 0, to: scale, 0) == nil)
+    doc.graph.connect(from: decode, 0, to: scale, 0)
+    #expect(NodeEditing.linkProblem(doc, from: scale, 0, to: output, 0) == nil)
+    doc.graph.connect(from: scale, 0, to: output, 0)
+    return (doc, scale)
+}
+
+@Test func addedNodesStayAndAreSent() throws {
+    let c = try catalog()
+    let (doc, scale) = try withUpscaler(c)
+    #expect(doc.addedNodes.map(\.id) == [scale])
+    // A change in the form keeps the upscaler and its links.
+    let again = doc.reconciled(with: try graph(request("a lighthouse at night"), c))
+    let compiled = try GraphSend.prepare(again, catalog: c, rating: .mature).get()
+    let sent = try #require(compiled.graph.nodes[String(scale)])
+    #expect(sent.classType == "ImageScaleBy")
+    #expect(sent.inputs["scale_by"] == .double(2))
+    let output = try #require(compiled.graph.nodes.values.first { $0.classType == "PreviewImage" })
+    #expect(output.inputs["images"] == .link(String(scale), 0))
+    #expect(compiled.positiveTexts == ["a lighthouse at night"])
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["COMFY_URL"] != nil), .timeLimit(.minutes(1)))
+func anAddedUpscalerRunsOnTheServer() async throws {
+    let c = try catalog()
+    let base = try ComfyServer.normalizedURL(from: ProcessInfo.processInfo.environment["COMFY_URL"]!)
+    let (doc, scale) = try withUpscaler(c)
+    let compiled = try GraphSend.prepare(doc, catalog: c, rating: .mature).get()
+    var promptID: String?
+    var pictures: [GeneratedImage] = []
+    for try await event in ComfyClient(baseURL: base).generate(compiled.graph, workflow: doc.json()) {
+        if case .queued(let id) = event { promptID = id }
+        if case .finished(let images) = event { pictures = images }
+    }
+    #expect(!pictures.isEmpty)
+    // The server took the upscaler, and the output reads from it.
+    let id = try #require(promptID)
+    let (data, _) = try await URLSession.shared.data(from: base.appending(path: "history/\(id)"))
+    let sent = try #require(JSONValue.parse(data)?[id]?["prompt"]?.array?[2].object)
+    #expect(sent[String(scale)]?["class_type"]?.string == "ImageScaleBy")
+    let output = try #require(sent.values.first { $0["class_type"]?.string == "PreviewImage" })
+    #expect(output["inputs"]?["images"]?.array?.first?.string == String(scale))
 }

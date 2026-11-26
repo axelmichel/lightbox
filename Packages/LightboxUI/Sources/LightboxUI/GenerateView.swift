@@ -79,6 +79,23 @@ struct GenerateView: View {
                 }
             }
 
+            // Nodes added in the graph: what is sent isn't only the preset's any more.
+            if let preset, let workflow = gen.shownWorkflow(app, preset: preset),
+                let added = app.workflows.document(workflow.id)?.addedNodes, !added.isEmpty
+            {
+                Section {
+                    Label(
+                        added.count == 1 ? "1 node added in the graph" : "\(added.count) nodes added in the graph",
+                        systemImage: "point.3.connected.trianglepath.dotted")
+                } header: {
+                    Text("Custom Workflow")
+                } footer: {
+                    Text(
+                        "“\(workflow.name)” is generated through the node graph; every text in it is checked like a prompt."
+                    )
+                }
+            }
+
             Section("Picture") {
                 if let preset {
                     Toggle(

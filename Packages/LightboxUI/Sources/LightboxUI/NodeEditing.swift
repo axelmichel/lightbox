@@ -32,3 +32,68 @@ enum NodeEditing {
         return d
     }
 }
+
+// MARK: - Structure
+
+extension NodeEditing {
+    /// Why a link can't be made; `nil` when it can.
+    static func linkProblem(
+        _ doc: WorkflowDocument, from origin: Int, _ slot: Int, to target: Int, _ input: Int
+    ) -> String? {
+        guard origin != target else { return "A node can't feed itself." }
+        guard let o = doc.graph.node(origin), let t = doc.graph.node(target), o.outputs.indices.contains(slot),
+            t.inputs.indices.contains(input)
+        else { return "That socket is gone." }
+        guard NodeGraph.accepts(t.inputs[input].type, from: o.outputs[slot].type) else {
+            return "\(o.outputs[slot].type) doesn't fit into \(t.inputs[input].type)."
+        }
+        let roles = doc.roles
+        if roles[origin] != nil, roles[target] != nil {
+            return "Lightbox links its own nodes; change them in the Generate panel."
+        }
+        return nil
+    }
+
+    /// Whether a node can be deleted: those Lightbox makes stay (switch them
+    /// off in the Generate panel); those added in the graph can go.
+    static func canDelete(_ node: Int, in doc: WorkflowDocument) -> Bool {
+        doc.graph.node(node) != nil && doc.roles[node] == nil
+    }
+}
+
+extension WorkflowDocument {
+    /// Nodes added in the graph that run (not notes or reroutes): such a
+    /// workflow is generated through the graph.
+    var addedNodes: [GraphNode] {
+        let roles = roles
+        return graph.nodes.filter { roles[$0.id] == nil && !WorkflowCompiler.virtualTypes.contains($0.type) }
+    }
+}
+
+/// Finding a node to add: a few useful ones without a search term, every
+/// node of the server with one.
+enum NodeSearch {
+    /// Shown before anything is typed, if the server has them.
+    static let suggested = [
+        "ImageScaleBy", "ImageScale", "UpscaleModelLoader", "ImageUpscaleWithModel", "ImageSharpen", "ImageBlur",
+        "ImageInvert", "ImageCrop", "SaveImage", "PreviewImage",
+    ]
+
+    /// Node types for `query`, found by name, display name or category:
+    /// those whose name starts with it first, then by name.
+    static func results(_ query: String, in catalog: ComfyCatalog) -> [String] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return suggested.filter { catalog.nodes[$0] != nil } }
+        func names(_ type: String) -> [String] { [type, catalog.nodes[type]?.displayName ?? ""] }
+        let found = catalog.nodes.filter { type, spec in
+            names(type).contains { $0.localizedCaseInsensitiveContains(q) }
+                || spec.category.localizedCaseInsensitiveContains(q)
+        }
+        return found.keys.sorted { a, b in
+            let pa = names(a).contains { $0.lowercased().hasPrefix(q.lowercased()) }
+            let pb = names(b).contains { $0.lowercased().hasPrefix(q.lowercased()) }
+            if pa != pb { return pa }
+            return a.localizedStandardCompare(b) == .orderedAscending
+        }
+    }
+}

@@ -44,7 +44,8 @@ struct NodeGraphView: View {
                 NodeCanvas(
                     state: state, catalog: app.catalog, running: app.generation.runningNode,
                     errors: app.generation.nodeErrors, onMove: { keepLayout($0, of: state) },
-                    onEdit: { edit($0, $1, to: $2, in: state) }
+                    onEdit: { edit($0, $1, to: $2, in: state) },
+                    onStructure: { change in structure(change, in: state) }
                 )
                 .id(canvasID)
             case .failure(let problem):
@@ -161,9 +162,35 @@ struct NodeGraphView: View {
     /// Nodes were moved: keep the layout in the workflow shown. The standard
     /// graph becomes a workflow of the preset first.
     private func keepLayout(_ moved: WorkflowDocument, of state: GenerationModel.GraphState) {
-        guard let id = state.workflow?.id ?? saveStandard(state) else { return }
+        guard moved != state.doc, let id = state.workflow?.id ?? saveStandard(state) else { return }
         app.generation.showWorkflow(id, app)
         app.workflows.change(id, to: moved, "Move Nodes", undo: undo)
+    }
+
+    /// Nodes added, deleted or linked: kept in the workflow shown (the
+    /// standard graph becomes one first), with an undo step.
+    private func structure(_ change: StructureChange, in state: GenerationModel.GraphState) {
+        var doc = state.doc
+        let name: String
+        switch change {
+        case .connect(let origin, let slot, let target, let input, let replacing):
+            if let replacing { doc.graph.removeLink(replacing) }
+            guard doc.graph.connect(from: origin, slot, to: target, input) != nil else { return }
+            name = "Connect"
+        case .disconnect(let link):
+            doc.graph.removeLink(link)
+            name = "Disconnect"
+        case .add(let type, let point):
+            guard let spec = app.catalog.nodes[type] else { return }
+            doc.graph.addNode(type, spec: spec, at: point)
+            name = "Add Node"
+        case .delete(let nodes):
+            doc.graph.removeNodes(Set(nodes.filter { NodeEditing.canDelete($0, in: doc) }))
+            name = nodes.count == 1 ? "Delete Node" : "Delete Nodes"
+        }
+        guard doc != state.doc, let id = state.workflow?.id ?? saveStandard(state) else { return }
+        app.generation.showWorkflow(id, app)
+        app.workflows.change(id, to: doc, name, undo: undo)
     }
 
     /// A value changed in the graph: it goes into the form, which makes the
@@ -212,6 +239,16 @@ struct NodeGraphView: View {
     }
 }
 
+/// A change to the graph's structure, from the canvas.
+enum StructureChange {
+    /// `replacing`: the link it was dragged off.
+    case connect(origin: Int, slot: Int, target: Int, input: Int, replacing: Int?)
+    case disconnect(Int)
+    /// A node of the server's at a point on the canvas.
+    case add(String, CGPoint)
+    case delete([Int])
+}
+
 /// A document's nodes and links. Click a node to select it (⇧ or ⌘ for
 /// several) and drag to move them; drag the background to move the view,
 /// pinch (or on the Mac, scroll the wheel) to zoom. Until then all of it is in view.
@@ -232,6 +269,25 @@ struct NodeCanvas: View {
     var onMove: (WorkflowDocument) -> Void = { _ in }
     /// A widget's new value: node, input, value.
     var onEdit: (Int, String, JSONValue) -> Void = { _, _, _ in }
+    /// Nodes added, deleted or linked.
+    var onStructure: (StructureChange) -> Void = { _ in }
+
+    /// A link being drawn from an output, or pulled off an input.
+    private struct LinkDrag {
+        var origin: Int
+        var slot: Int
+        var type: String
+        /// The link pulled off, if it was one.
+        var replacing: Int?
+        /// The pointer, on the canvas.
+        var point: CGPoint
+    }
+
+    /// Where a node is to be added.
+    private struct AddRequest: Identifiable {
+        let id = UUID()
+        var point: CGPoint
+    }
 
     /// `nil`: fitted to the view.
     @State private var viewport: NodeViewport?
@@ -241,6 +297,11 @@ struct NodeCanvas: View {
     @State private var nodeDrag: NodeDrag?
     /// The widget being edited, over its row.
     @State private var editing: RowEdit.Target?
+    @State private var linkDrag: LinkDrag?
+    @State private var adding: AddRequest?
+    /// Why something was refused, shown for a moment.
+    @State private var hint: String?
+    @FocusState private var focused: Bool
 
     /// The document as shown: with the nodes being dragged where they are now.
     private var doc: WorkflowDocument {
@@ -274,7 +335,7 @@ struct NodeCanvas: View {
                 let seen = CGRect(
                     origin: shown.toCanvas(.zero),
                     size: CGSize(width: size.width / shown.scale, height: size.height / shown.scale))
-                for link in doc.graph.links { draw(link, layouts, in: context) }
+                for link in doc.graph.links where link.id != linkDrag?.replacing { draw(link, layouts, in: context) }
                 for node in doc.graph.nodes {
                     guard let layout = layouts[node.id], layout.bounds.intersects(seen) else { continue }
                     draw(node, layout, role: roles[node.id], in: context)
@@ -300,15 +361,36 @@ struct NodeCanvas: View {
                                 height: 120))
                     }
                 }
+                if let drag = linkDrag, let outputs = layouts[drag.origin]?.outputPoints,
+                    outputs.indices.contains(drag.slot)
+                {
+                    let from = outputs[drag.slot]
+                    // The inputs it fits into, then the link to the pointer.
+                    for node in doc.graph.nodes where node.id != drag.origin {
+                        guard let points = layouts[node.id]?.inputPoints else { continue }
+                        for (i, input) in node.inputs.enumerated()
+                        where i < points.count && NodeGraph.accepts(input.type, from: drag.type) {
+                            let p = points[i]
+                            context.stroke(
+                                Path(ellipseIn: CGRect(x: p.x - 8, y: p.y - 8, width: 16, height: 16)),
+                                with: .color(NodeColors.selection), lineWidth: 2 / shown.scale)
+                        }
+                    }
+                    context.stroke(curve(from, drag.point), with: .color(NodeColors.type(drag.type)), lineWidth: 3)
+                }
             }
             .contentShape(Rectangle())
             // A drag on a node moves it (with the selection); on the background it moves the view.
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { value in
-                        if panStart == nil, nodeDrag == nil {
+                        if panStart == nil, nodeDrag == nil, linkDrag == nil {
                             let start = shown.toCanvas(value.startLocation)
-                            if let hit = NodeEditing.node(at: start, in: doc.graph.nodes, layouts: layouts) {
+                            if let socket = socketDrag(at: start, doc, layouts, roles) {
+                                // A socket: draw (or pull off) a link. Hold the view still.
+                                viewport = shown
+                                linkDrag = socket
+                            } else if let hit = NodeEditing.node(at: start, in: doc.graph.nodes, layouts: layouts) {
                                 if !selection.contains(hit) {
                                     selection = NodeEditing.select(hit, in: selection, extend: extendsSelection)
                                 }
@@ -319,7 +401,9 @@ struct NodeCanvas: View {
                                 panStart = shown
                             }
                         }
-                        if nodeDrag != nil {
+                        if linkDrag != nil {
+                            linkDrag?.point = shown.toCanvas(value.location)
+                        } else if nodeDrag != nil {
                             nodeDrag?.delta = CGSize(
                                 width: value.translation.width / shown.scale,
                                 height: value.translation.height / shown.scale)
@@ -328,9 +412,12 @@ struct NodeCanvas: View {
                         }
                     }
                     .onEnded { _ in
-                        if let drag = nodeDrag, drag.delta != .zero {
+                        if let drag = linkDrag {
+                            dropLink(drag, doc, layouts)
+                        } else if let drag = nodeDrag, drag.delta != .zero {
                             onMove(NodeEditing.moved(state.doc, drag.nodes, by: drag.delta))
                         }
+                        linkDrag = nil
                         nodeDrag = nil
                         panStart = nil
                     }
@@ -340,9 +427,19 @@ struct NodeCanvas: View {
                     .onEnded { tap in
                         let point = shown.toCanvas(tap.location)
                         let hit = NodeEditing.node(at: point, in: doc.graph.nodes, layouts: layouts)
+                        focused = true
                         selection = NodeEditing.select(hit, in: selection, extend: extendsSelection)
                         if let hit, let node = doc.graph.node(hit), let layout = layouts[hit] {
                             editing = RowEdit.target(node, layout, role: roles[hit], at: point, catalog: catalog)
+                        }
+                    }
+            )
+            .simultaneousGesture(
+                SpatialTapGesture(count: 2)
+                    .onEnded { tap in
+                        let point = shown.toCanvas(tap.location)
+                        if NodeEditing.node(at: point, in: doc.graph.nodes, layouts: layouts) == nil {
+                            adding = AddRequest(point: point)
                         }
                     }
             )
@@ -370,7 +467,34 @@ struct NodeCanvas: View {
                     }
                 }
             #endif
-            .overlay(alignment: .bottomTrailing) { controls(shown, size: size) }
+            .focusable()
+            .focusEffectDisabled()
+            .focused($focused)
+            #if os(macOS)
+                .onDeleteCommand { deleteSelection(doc) }
+            #endif
+            .overlay(alignment: .bottomTrailing) { controls(shown, size: size, doc: doc) }
+            .overlay(alignment: .top) {
+                if let hint {
+                    Text(hint)
+                        .font(.callout)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.regularMaterial, in: Capsule())
+                        .padding(12)
+                        .transition(.opacity)
+                        .task(id: hint) {
+                            try? await Task.sleep(for: .seconds(3))
+                            withAnimation { self.hint = nil }
+                        }
+                }
+            }
+            .sheet(item: $adding) { request in
+                NodePicker(catalog: catalog) { type in
+                    adding = nil
+                    onStructure(.add(type, request.point))
+                }
+            }
             .overlay(alignment: .topLeading) {
                 if let target = editing,
                     let row = layouts[target.node]?.rows.first(where: {
@@ -392,9 +516,15 @@ struct NodeCanvas: View {
         }
     }
 
-    private func controls(_ shown: NodeViewport, size: CGSize) -> some View {
+    private func controls(_ shown: NodeViewport, size: CGSize, doc: WorkflowDocument) -> some View {
         let center = CGPoint(x: size.width / 2, y: size.height / 2)
         return HStack(spacing: 2) {
+            Button("Add Node", systemImage: "plus") { adding = AddRequest(point: shown.toCanvas(center)) }
+                .help("Add a node of the server's (or double-click the background)")
+            Button("Delete", systemImage: "trash") { deleteSelection(doc) }
+                .help("Delete the selected nodes you added")
+                .disabled(!selection.contains { NodeEditing.canDelete($0, in: doc) })
+            Divider().frame(height: 16)
             Button("Zoom Out", systemImage: "minus.magnifyingglass") {
                 viewport = shown.zoomed(by: 1 / 1.25, around: center)
             }
@@ -419,14 +549,71 @@ struct NodeCanvas: View {
         guard let from = layouts[link.origin]?.outputPoints, from.indices.contains(link.originSlot),
             let to = layouts[link.target]?.inputPoints, to.indices.contains(link.targetSlot)
         else { return }
-        let (a, b) = (from[link.originSlot], to[link.targetSlot])
-        // LiteGraph's curve: handles a quarter of the distance long, level.
+        context.stroke(
+            curve(from[link.originSlot], to[link.targetSlot]), with: .color(NodeColors.type(link.type)), lineWidth: 3)
+    }
+
+    /// LiteGraph's curve: handles a quarter of the distance long, level.
+    private func curve(_ a: CGPoint, _ b: CGPoint) -> Path {
         let handle = hypot(b.x - a.x, b.y - a.y) * 0.25
         var path = Path()
         path.move(to: a)
         path.addCurve(
             to: b, control1: CGPoint(x: a.x + handle, y: a.y), control2: CGPoint(x: b.x - handle, y: b.y))
-        context.stroke(path, with: .color(NodeColors.type(link.type)), lineWidth: 3)
+        return path
+    }
+
+    /// A drag starting on an output draws a link; on a linked input it
+    /// pulls the link off, unless Lightbox makes that link.
+    private func socketDrag(
+        at point: CGPoint, _ doc: WorkflowDocument, _ layouts: [Int: NodeLayout], _ roles: [Int: NodeRole]
+    ) -> LinkDrag? {
+        for node in doc.graph.nodes.reversed() {
+            guard let hit = layouts[node.id]?.hit(point) else { continue }
+            switch hit {
+            case .output(let i):
+                return LinkDrag(origin: node.id, slot: i, type: node.outputs[i].type, replacing: nil, point: point)
+            case .input(let i):
+                guard let id = node.inputs[i].link, let link = doc.graph.link(id) else { return nil }
+                if roles[link.origin] != nil, roles[node.id] != nil {
+                    hint = "Lightbox links its own nodes; change them in the Generate panel."
+                    return nil
+                }
+                return LinkDrag(
+                    origin: link.origin, slot: link.originSlot, type: link.type, replacing: id, point: point)
+            default:
+                return nil
+            }
+        }
+        return nil
+    }
+
+    /// The link drawn ends on an input: connect it if it fits. A link pulled
+    /// off and dropped elsewhere is gone.
+    private func dropLink(_ drag: LinkDrag, _ doc: WorkflowDocument, _ layouts: [Int: NodeLayout]) {
+        for node in doc.graph.nodes.reversed() {
+            guard case .input(let i)? = layouts[node.id]?.hit(drag.point) else { continue }
+            if let problem = NodeEditing.linkProblem(doc, from: drag.origin, drag.slot, to: node.id, i) {
+                withAnimation { hint = problem }
+            } else {
+                onStructure(
+                    .connect(origin: drag.origin, slot: drag.slot, target: node.id, input: i, replacing: drag.replacing)
+                )
+            }
+            return
+        }
+        if let id = drag.replacing { onStructure(.disconnect(id)) }
+    }
+
+    /// Delete the selected nodes the user added; Lightbox's own stay.
+    private func deleteSelection(_ doc: WorkflowDocument) {
+        let deletable = selection.filter { NodeEditing.canDelete($0, in: doc) }
+        if deletable.count < selection.count {
+            withAnimation { hint = "Lightbox's own nodes stay; switch their settings off in the Generate panel." }
+        }
+        guard !deletable.isEmpty else { return }
+        onStructure(.delete(Array(deletable)))
+        selection.subtract(deletable)
     }
 
     private func draw(_ node: GraphNode, _ layout: NodeLayout, role: NodeRole?, in context: GraphicsContext) {

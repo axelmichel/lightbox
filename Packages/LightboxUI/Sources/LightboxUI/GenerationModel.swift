@@ -172,9 +172,11 @@ public final class GenerationModel {
         // By default a picture names its workflow; the graph path may keep the whole graph (`graphEvents`).
         runRecord = workflow.map { WorkflowRun(workflowID: $0.id, name: $0.name, server: app.serverAddress) }
         // Through the graph (with the shown workflow's layout and nodes), or
-        // as always, straight from the request.
+        // as always, straight from the request. A workflow with nodes added
+        // in the graph can only go through it.
+        let added = workflow.flatMap { app.workflows.document($0.id) }.map { !$0.addedNodes.isEmpty } ?? false
         let events =
-            UserDefaults.standard.bool(forKey: Self.throughGraphKey)
+            UserDefaults.standard.bool(forKey: Self.throughGraphKey) || added
             ? graphEvents(prepared.request, workflow: workflow, client: client, app)
             : client.generate(prepared.request, catalog: app.catalog)
         run(events) { [weak self] images in
