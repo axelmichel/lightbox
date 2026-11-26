@@ -24,7 +24,7 @@ struct PresetsView: View {
         @Bindable var app = app
         NavigationSplitView {
             List(selection: $selection) {
-                ForEach(app.library.presets) { p in
+                ForEach(app.library.presets.sortedByName) { p in
                     HStack(spacing: 8) {
                         LoraThumbnail(image: app.presetPicture(p.id), size: 40, symbol: "slider.horizontal.3")
                         VStack(alignment: .leading, spacing: 2) {
@@ -42,7 +42,6 @@ struct PresetsView: View {
                         Button("Delete", systemImage: "trash", role: .destructive) { delete(p.id) }
                     }
                 }
-                .onMove { app.library.presets.move(fromOffsets: $0, toOffset: $1) }
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 240)
             .toolbar {

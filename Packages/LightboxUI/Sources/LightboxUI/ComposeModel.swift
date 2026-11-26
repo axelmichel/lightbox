@@ -23,14 +23,20 @@ public final class CompositionsModel {
     public func composition(_ id: UUID?) -> Composition? { list.first { $0.id == id } }
 
     /// A new composition with `pictures` (gallery IDs) as layers, opened.
-    public func create(with pictures: [UUID] = []) {
+    /// Its canvas is `size`, or (without one) the first picture's.
+    public func create(with pictures: [UUID] = [], size: (width: Int, height: Int)? = nil) {
         var name = "Composition"
         var n = 2
         while list.contains(where: { $0.name == name }) {
             name = "Composition \(n)"
             n += 1
         }
-        let doc = ComposeDocument(Composition(name: name), store: store, gallery: gallery, owner: self)
+        var composition = Composition(name: name)
+        if let size {
+            composition.width = min(max(size.width, 16), Composition.maxSide)
+            composition.height = min(max(size.height, 16), Composition.maxSide)
+        }
+        let doc = ComposeDocument(composition, store: store, gallery: gallery, owner: self)
         document?.close()
         document = doc
         doc.add(pictures, undo: nil)

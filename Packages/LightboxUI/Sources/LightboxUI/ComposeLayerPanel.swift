@@ -373,7 +373,7 @@ struct ModelEditSection: View {
                 "Preset",
                 selection: Binding(get: { preset?.id }, set: { doc.editPresetID = $0 })
             ) {
-                ForEach(app.library.presets) { Text($0.name).tag(Optional($0.id)) }
+                ForEach(app.library.presets.sortedByName) { Text($0.name).tag(Optional($0.id)) }
             }
             PromptField(
                 title: "What should be there", text: $doc.editPrompt,

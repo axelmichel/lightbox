@@ -7,10 +7,18 @@ private enum SidebarItem: Hashable {
     case composition(UUID)
 }
 
-/// All pictures, those in no folder, the folders (inside each other), the
-/// tags and the compositions. Drop pictures on a folder to move them there,
-/// on a tag to tag them; drop a folder on another to put it inside.
+/// The sidebar's two tabs.
+private enum SidebarTab: String {
+    case gallery, compositions
+}
+
+/// Two tabs. The gallery's: all pictures, those in no folder, the folders
+/// (inside each other) and the most used tags, the two groups collapsible.
+/// Drop pictures on a folder to move them there, on a tag to tag them; drop
+/// a folder on another to put it inside. The other tab lists the compositions.
 struct SidebarView: View {
+    /// Tags shown before "more".
+    static let tagLimit = 10
     @Environment(AppModel.self) private var app
     @State private var renaming: GalleryFolder?
     @State private var newName = ""
@@ -20,71 +28,69 @@ struct SidebarView: View {
     @State private var renamingTag: String?
     @State private var removingTag: String?
     @AppStorage(PanelKeys.nodes) private var showNodes = false
+    @AppStorage("sidebarTab") private var tab = SidebarTab.gallery
+    @AppStorage("sidebarFoldersOpen") private var foldersOpen = true
+    @AppStorage("sidebarTagsOpen") private var tagsOpen = true
+    @State private var allTagsShown = false
+    @State private var creating = false
 
     var body: some View {
         let gallery = app.gallery
         let index = gallery.index
         let compositions = app.compositions
         List(selection: selection) {
-            Section {
-                row("All Pictures", "photo.on.rectangle.angled", .all, count: index.count(.all))
-                row("Not in a Folder", "tray", .unfiled, count: index.count(.unfiled))
-            }
-            Section("Folders") {
-                OutlineGroup(FolderNode.tree(index), children: \.children) { node in
-                    folderRow(node.folder)
+            if tab == .gallery {
+                Section {
+                    row("All Pictures", "photo.on.rectangle.angled", .all, count: index.count(.all))
+                    row("Not in a Folder", "tray", .unfiled, count: index.count(.unfiled))
                 }
-            }
-            if !index.allTags.isEmpty {
-                Section("Tags") {
-                    ForEach(index.allTags, id: \.tag) { entry in
-                        row("#\(entry.tag)", "tag", .tag(entry.tag), count: entry.count)
-                            .contextMenu {
-                                Button("Rename…", systemImage: "pencil") {
-                                    newName = entry.tag
-                                    renamingTag = entry.tag
-                                }
-                                Button("Delete Tag…", systemImage: "trash", role: .destructive) {
-                                    removingTag = entry.tag
-                                }
-                            }
+                Section("Folders", isExpanded: $foldersOpen) {
+                    OutlineGroup(FolderNode.tree(index), children: \.children) { node in
+                        folderRow(node.folder)
                     }
                 }
-            }
-            Section("Compositions") {
-                ForEach(compositions.list) { c in
-                    Label(c.name, systemImage: "square.3.layers.3d")
-                        .lineLimit(1)
-                        .tag(SidebarItem.composition(c.id))
-                        .contextMenu {
-                            Button("Rename…", systemImage: "pencil") {
-                                newName = c.name
-                                renamingComposition = c
-                            }
-                            Button("Delete Composition…", systemImage: "trash", role: .destructive) {
-                                removingComposition = c
-                            }
-                        }
-                }
+                tags(index)
+            } else {
+                compositionRows
             }
         }
         .navigationTitle("Lightbox")
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Picker("Show", selection: $tab) {
+                Label("Gallery", systemImage: "photo.on.rectangle.angled").tag(SidebarTab.gallery)
+                Label("Compositions", systemImage: "square.3.layers.3d").tag(SidebarTab.compositions)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+        }
+        .onChange(of: tab) { _, now in
+            // The gallery tab shows the gallery again.
+            if now == .gallery { app.compositions.close() }
+        }
+        .onChange(of: compositions.document?.composition.id) { _, open in
+            // Opened from the gallery (Edit in Composition): its tab.
+            if open != nil { tab = .compositions }
+        }
         .safeAreaInset(edge: .bottom) {
             HStack {
-                Button("New Folder", systemImage: "folder.badge.plus") {
-                    // Inside the folder shown, if one is; renamed from its menu.
-                    let folder = gallery.addFolder(named: "New Folder", in: gallery.filter.folderID)
-                    gallery.filter = .folder(folder.id)
+                if tab == .gallery {
+                    Button("New Folder", systemImage: "folder.badge.plus") {
+                        // Inside the folder shown, if one is; renamed from its menu.
+                        let folder = gallery.addFolder(named: "New Folder", in: gallery.filter.folderID)
+                        gallery.filter = .folder(folder.id)
+                    }
+                } else {
+                    Button("New Composition", systemImage: "square.3.layers.3d.badge.plus") { creating = true }
+                        .help("A blank canvas, or gallery pictures as layers")
                 }
-                .buttonStyle(.borderless)
                 Spacer()
-                Button("New Composition", systemImage: "square.3.layers.3d.badge.plus") { compositions.create() }
-                    .labelStyle(.iconOnly)
-                    .buttonStyle(.borderless)
-                    .help("A new composition; add gallery pictures to it as layers")
             }
+            .buttonStyle(.borderless)
             .padding(10)
         }
+        .sheet(isPresented: $creating) { NewCompositionView() }
         .alert("Rename Folder", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
             Button("Rename") {
@@ -154,6 +160,62 @@ struct SidebarView: View {
             }
         } message: {
             Text("Its layers are deleted. Pictures saved from it to the gallery are kept.")
+        }
+    }
+
+    /// The most used tags; "more" shows the rest. The tag shown stays in view.
+    @ViewBuilder private func tags(_ index: GalleryIndex) -> some View {
+        let all = index.topTags(.max)
+        if !all.isEmpty {
+            let shown: String? = if case .tag(let t) = app.gallery.filter { t } else { nil }
+            let list = allTagsShown ? all : index.topTags(Self.tagLimit, keeping: shown)
+            Section("Tags", isExpanded: $tagsOpen) {
+                ForEach(list, id: \.tag) { entry in
+                    row("#\(entry.tag)", "tag", .tag(entry.tag), count: entry.count)
+                        .contextMenu {
+                            Button("Rename…", systemImage: "pencil") {
+                                newName = entry.tag
+                                renamingTag = entry.tag
+                            }
+                            Button("Delete Tag…", systemImage: "trash", role: .destructive) {
+                                removingTag = entry.tag
+                            }
+                        }
+                }
+                if all.count > Self.tagLimit {
+                    Button {
+                        withAnimation { allTagsShown.toggle() }
+                    } label: {
+                        Label(
+                            allTagsShown ? "Fewer" : "\(all.count - list.count) More",
+                            systemImage: allTagsShown ? "minus.circle" : "plus.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .help(allTagsShown ? "Only the \(Self.tagLimit) most used tags" : "All tags, most used first")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var compositionRows: some View {
+        let compositions = app.compositions
+        ForEach(compositions.list) { c in
+            Label(c.name, systemImage: "square.3.layers.3d")
+                .lineLimit(1)
+                .tag(SidebarItem.composition(c.id))
+                .contextMenu {
+                    Button("Rename…", systemImage: "pencil") {
+                        newName = c.name
+                        renamingComposition = c
+                    }
+                    Button("Delete Composition…", systemImage: "trash", role: .destructive) {
+                        removingComposition = c
+                    }
+                }
+        }
+        if compositions.list.isEmpty {
+            Text("No compositions yet.").foregroundStyle(.secondary)
         }
     }
 

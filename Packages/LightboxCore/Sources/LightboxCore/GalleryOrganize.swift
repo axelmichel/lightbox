@@ -109,6 +109,21 @@ extension GalleryItem {
 }
 
 extension GalleryIndex {
+    /// The `limit` most used tags, most used first (by name when as many),
+    /// plus `keeping` if it is used but not among them (the tag shown).
+    public func topTags(_ limit: Int, keeping: String? = nil) -> [(tag: String, count: Int)] {
+        let byUse = allTags.sorted {
+            $0.count != $1.count ? $0.count > $1.count : $0.tag.localizedStandardCompare($1.tag) == .orderedAscending
+        }
+        var top = Array(byUse.prefix(limit))
+        if let keeping, !top.contains(where: { $0.tag.caseInsensitiveCompare(keeping) == .orderedSame }),
+            let kept = byUse.first(where: { $0.tag.caseInsensitiveCompare(keeping) == .orderedSame })
+        {
+            top.append(kept)
+        }
+        return top
+    }
+
     /// All tags with how many pictures have them, by name. Tags that differ
     /// only in case are one, written as first used.
     public var allTags: [(tag: String, count: Int)] {

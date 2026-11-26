@@ -333,3 +333,10 @@ public struct Library: Codable, Hashable, Sendable {
         loraNotes = try c.decodeIfPresent([String: LoraNote].self, forKey: .loraNotes) ?? [:]
     }
 }
+
+extension [GenerationPreset] {
+    /// By name, as the lists show them.
+    public var sortedByName: [GenerationPreset] {
+        sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+}

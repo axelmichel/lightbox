@@ -143,3 +143,24 @@ private func item(_ prompt: String, folder: UUID? = nil, tags: [String]? = nil) 
     #expect(groups.map { $0.folder?.name } == [nil, "Art", "Trips", "Lisbon"])
     #expect(groups.last?.items.map(\.id) == [pictures[0].id, pictures[4].id])
 }
+
+@Test func theMostUsedTagsComeFirst() throws {
+    var index = GalleryIndex()
+    let a = try item("a fox", tags: ["snow", "animals", "night"])
+    let b = try item("a cat", tags: ["animals", "night"])
+    let c = try item("a dog", tags: ["animals", "beach"])
+    index.insert([a, b, c])
+    #expect(index.topTags(2).map(\.tag) == ["animals", "night"])
+    // As many uses: by name.
+    #expect(index.topTags(4).map(\.tag) == ["animals", "night", "beach", "snow"])
+    // The tag shown stays in the list.
+    #expect(index.topTags(1, keeping: "Snow").map(\.tag) == ["animals", "snow"])
+    #expect(index.topTags(1, keeping: "gone").map(\.tag) == ["animals"])
+}
+
+@Test func presetsAreListedByName() {
+    let presets = ["zeta", "Alpha 10", "alpha 2", "Beta"].map {
+        GenerationPreset(name: $0, checkpoint: "x.safetensors")
+    }
+    #expect(presets.sortedByName.map(\.name) == ["alpha 2", "Alpha 10", "Beta", "zeta"])
+}

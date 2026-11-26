@@ -20,8 +20,10 @@ struct LorasView: View {
     @State private var onlyFitting = true
 
     var body: some View {
+        // By the name shown, not the folder it is in.
         let all = Array(Set(app.catalog.loras).union(app.library.loraNotes.keys)).sorted {
-            $0.localizedStandardCompare($1) == .orderedAscending
+            PresetDetector.displayName($0).localizedStandardCompare(PresetDetector.displayName($1))
+                == .orderedAscending
         }
         let found = all.filter(matches)
         let filtering = family != nil && onlyFitting
