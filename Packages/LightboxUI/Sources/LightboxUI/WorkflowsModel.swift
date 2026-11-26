@@ -31,7 +31,7 @@ public final class WorkflowsModel {
 
     /// The workflows of `presetID`, by name.
     func entries(for presetID: UUID) -> [WorkflowEntry] {
-        entries.filter { $0.presetID == presetID }.sorted {
+        entries.filter { $0.presetID == presetID && !$0.isTemplate }.sorted {
             $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }
     }
@@ -39,7 +39,7 @@ public final class WorkflowsModel {
     /// Workflows whose preset is gone (or that never had one).
     func withoutPreset(_ presets: [GenerationPreset]) -> [WorkflowEntry] {
         let ids = Set(presets.map(\.id))
-        return entries.filter { $0.presetID.map { !ids.contains($0) } ?? true }
+        return entries.filter { !$0.isTemplate && ($0.presetID.map { !ids.contains($0) } ?? true) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
@@ -70,6 +70,20 @@ public final class WorkflowsModel {
     }
 
     func uniqueName(_ base: String) -> String { store.uniqueName(base) }
+
+    /// A preset's template: a ComfyUI workflow it fills in to generate.
+    func saveTemplate(_ doc: WorkflowDocument, name: String, presetID: UUID) -> UUID? {
+        do {
+            let entry = try store.save(
+                WorkflowEntry(name: name, presetID: presetID, isTemplate: true), data: doc.data())
+            documents[entry.id] = doc
+            reload()
+            return entry.id
+        } catch {
+            problem = "Could not keep the workflow: \(error.localizedDescription)"
+            return nil
+        }
+    }
 
     /// Keep `doc` as workflow `id` (nodes moved in the graph view), with an
     /// undo step called `name`.

@@ -241,3 +241,32 @@ private func filledTemplate(_ name: String, _ positive: String, negative: String
     let sent = try #require(negative(compiled))
     for term in ContentGuard.minorNegatives { #expect(sent.contains(term), "\(term)") }
 }
+
+@Test func templateTextsSayWhat() {
+    #expect(
+        TemplateText.missing([.positive, .output]) == "no prompt (CLIP Text Encode), no output (Save or Preview Image)")
+    #expect(
+        TemplateText.found([.positive, .sampler, .latent, .diffusionModel, .checkpoint])
+            == "prompt, sampling, size, model")
+}
+
+/// A workflow saved on the server, made into a template, filled and run:
+/// the way of a preset for a model Lightbox doesn't know.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["COMFY_URL"] != nil), .timeLimit(.minutes(1)))
+func aServerWorkflowRunsAsATemplate() async throws {
+    let c = try catalog()
+    let client = ComfyClient(
+        baseURL: try ComfyServer.normalizedURL(from: ProcessInfo.processInfo.environment["COMFY_URL"]!))
+    let names = try await client.savedWorkflows()
+    let name = try #require(names.first)
+    let marking = try WorkflowDocument(data: try await client.savedWorkflow(name)).markedAsTemplate(catalog: c)
+    #expect(marking.missing.isEmpty)
+    let r = request("a lighthouse on a cliff", negative: "nsfw, nude")
+    let doc = try GraphSend.standardGraph(r, template: marking.doc, catalog: c)
+    let compiled = try GraphSend.prepare(doc, catalog: c, rating: .allAges).get()
+    var pictures: [GeneratedImage] = []
+    for try await event in client.generate(compiled.graph, workflow: doc.json()) {
+        if case .finished(let images) = event { pictures = images }
+    }
+    #expect(!pictures.isEmpty)
+}

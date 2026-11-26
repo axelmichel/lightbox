@@ -272,6 +272,9 @@ Texte gehen durch `GraphSend` (Guard-Tests wie in 5.1).
 Anlegen aus einer Datei oder aus den im Server gespeicherten Workflows. Der Preset-Editor zeigt „Aus Workflow …“,
 die übernommenen Werte und was nicht gefunden wurde. Guides und Gesichts-/Hand-Fix sind bei Vorlagen-Presets aus.
 
+**8.3 und 8.4 werden zusammen gebaut und abgenommen:** Ein Vorlagen-Preset, mit dem man nicht generieren kann, ließe
+sich nicht prüfen.
+
 **8.4 Generieren und Graph.** Vorlagen-Presets senden immer über den Graphen; die Node-Ansicht zeigt die gefüllte
 Vorlage, Bearbeiten, Workflows und Abweichungen funktionieren wie bei den anderen Presets.
 Abnahme: ein Preset aus einem Server-Workflow einer Engine, die Lightbox nicht kennt, erzeugt Bilder.

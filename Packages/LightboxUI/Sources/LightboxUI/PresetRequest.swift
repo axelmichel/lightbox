@@ -6,6 +6,8 @@ import LightboxCore
 extension GenerationPreset {
     /// What keeps the preset from running on the server; `nil` = ready.
     func problem(with catalog: ComfyCatalog) -> String? {
+        // A template brings its own loaders; generate checks that it is still there.
+        if usesTemplate, template != nil { return nil }
         guard !checkpoint.isEmpty else { return "The preset “\(name)” has no model yet." }
         guard family.isSupported else {
             return "“\(checkpoint)” is a model Lightbox can't load yet (SD3 and similar)."

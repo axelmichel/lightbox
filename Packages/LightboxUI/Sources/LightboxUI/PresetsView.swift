@@ -17,6 +17,8 @@ struct PresetsView: View {
     @State private var importProblem: String?
     /// A preset with workflows, asked about before it is deleted.
     @State private var deleting: GenerationPreset?
+    /// The workflows saved on the server, to make a preset from.
+    @State private var serverWorkflows: [String] = []
 
     var body: some View {
         @Bindable var app = app
@@ -65,6 +67,14 @@ struct PresetsView: View {
                         .disabled(app.models.isEmpty)
                         Divider()
                         Button("Import ComfyUI Workflow…", systemImage: "square.and.arrow.down") { importing = true }
+                        Menu("From a Server Workflow", systemImage: "point.3.connected.trianglepath.dotted") {
+                            ForEach(serverWorkflows, id: \.self) { name in
+                                Button((name as NSString).deletingPathExtension) {
+                                    Task { await importFromServer(name) }
+                                }
+                            }
+                        }
+                        .disabled(serverWorkflows.isEmpty)
                         Button("Empty Preset") {
                             let p = GenerationPreset(name: "New Preset")
                             app.library.presets.append(p)
@@ -95,6 +105,7 @@ struct PresetsView: View {
             }
         }
         .onAppear { selection = selection ?? start ?? app.generation.preset(in: app.library)?.id }
+        .task { serverWorkflows = (try? await app.client?.savedWorkflows()) ?? [] }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
             switch result {
             case .success(let url):
@@ -140,18 +151,18 @@ struct PresetsView: View {
     /// A new preset from a ComfyUI workflow file; its prompt goes into the
     /// prompt field.
     private func importWorkflow(_ data: Data, name: String) throws {
-        let result = try WorkflowImport.read(data, name: name)
-        var preset = result.preset
-        let onServer = Set(app.models + app.catalog.textEncoders + app.catalog.loras)
-        let missing = result.files.filter { !onServer.contains($0) }
-        if app.isConnected, !missing.isEmpty {
-            preset.detectionNotes.append("Not on the server: \(missing.joined(separator: ", ")).")
+        selection = try app.addPreset(fromWorkflow: data, name: name).id
+    }
+
+    private func importFromServer(_ name: String) async {
+        do {
+            guard let client = app.client else { return }
+            try importWorkflow(try await client.savedWorkflow(name), name: name)
+        } catch let error as WorkflowImportError {
+            importProblem = error.description
+        } catch {
+            importProblem = "Could not read “\(name)” from the server: \(AppModel.describe(error))"
         }
-        app.library.presets.append(preset)
-        app.library.knownCheckpoints.insert(preset.checkpoint)
-        selection = preset.id
-        app.generation.presetID = preset.id
-        if !result.prompt.isEmpty { app.generation.prompt = result.prompt }
     }
 
     private func addDetected(_ checkpoint: String) async {
@@ -217,6 +228,9 @@ struct PresetEditor: View {
                     }
                 }
                 pictureSection(preset)
+                if let template = preset.template {
+                    templateSection(template, usesTemplate: p.usesTemplate)
+                }
                 Section {
                     TextField("Name", text: p.name)
                     if preset.family.isSplit {
@@ -366,6 +380,32 @@ struct PresetEditor: View {
                         }
                     }, family: preset.family)
             }
+        }
+    }
+
+    /// The workflow the preset was made from, and whether it is filled in to generate.
+    private func templateSection(_ template: UUID, usesTemplate: Binding<Bool>) -> some View {
+        let entry = app.workflows.entry(template)
+        let doc = app.workflows.document(template)
+        let found = doc.map { Set($0.roles.values.map(\.kind)) } ?? []
+        return Section {
+            Toggle("Use the workflow as template", isOn: usesTemplate)
+            if let doc {
+                LabeledContent("Filled in", value: TemplateText.found(found))
+                let added = doc.addedNodes
+                if !added.isEmpty {
+                    LabeledContent("Kept as it is", value: added.map(\.type).joined(separator: ", "))
+                }
+            } else {
+                Label("The workflow is gone.", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
+            }
+        } header: {
+            Text("From Workflow “\(entry?.name ?? "?")”")
+        } footer: {
+            Text(
+                "With the template, Lightbox fills in the workflow as it was made in ComfyUI: prompt, seed, size, "
+                    + "sampling and LoRAs. Guides and the face and hand fix are off then. Without it, Lightbox "
+                    + "builds the graph itself, tuned for the model family.")
         }
     }
 

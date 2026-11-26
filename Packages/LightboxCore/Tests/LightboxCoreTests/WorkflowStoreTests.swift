@@ -178,3 +178,25 @@ private let png = Data(
     o.reset(.disabledLoras)
     #expect(o.isEmpty)
 }
+
+@Test func aPresetsTemplateGoesWithIt() throws {
+    let root = tempRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let store = WorkflowStore(root: root)
+    let file = Data(#"{"nodes":[],"links":[],"version":0.4}"#.utf8)
+    let preset = UUID()
+    let template = try store.save(WorkflowEntry(name: "T", presetID: preset, isTemplate: true), data: file)
+    let workflow = try store.save(WorkflowEntry(name: "W", presetID: preset), data: file)
+    #expect(try store.list().first { $0.id == template.id }?.isTemplate == true)
+    #expect(try store.list().first { $0.id == workflow.id }?.isTemplate == false)
+    // Workflows kept: the template goes all the same.
+    try store.presetDeleted(preset, keepWorkflows: true)
+    #expect(try store.list().map(\.id) == [workflow.id])
+    // Only written when it is one.
+    #expect(
+        !String(decoding: try JSONEncoder.gallery.encode(WorkflowEntry(name: "B")), as: UTF8.self).contains(
+            "isTemplate"))
+    // Presets saved before templates had them still load.
+    let old = try JSONDecoder().decode(GenerationPreset.self, from: Data(#"{"name":"Old"}"#.utf8))
+    #expect(old.template == nil && !old.usesTemplate)
+}

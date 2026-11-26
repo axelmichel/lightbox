@@ -147,6 +147,12 @@ public struct GenerationPreset: Codable, Hashable, Identifiable, Sendable {
     public var detectionNotes: [String]
     /// An example picture, shown when choosing a preset (`PreviewStore`).
     public var picture: UUID?
+    /// The ComfyUI workflow it was made from, kept as a template
+    /// (`WorkflowStore`, `isTemplate`).
+    public var template: UUID?
+    /// Generate by filling the template instead of building the graph:
+    /// for engines Lightbox has no tuned support for.
+    public var usesTemplate = false
 
     public init(
         id: UUID = UUID(), name: String, family: ModelFamily = .sdxl, style: PictureStyle = .illustration,
@@ -185,7 +191,7 @@ public struct GenerationPreset: Codable, Hashable, Identifiable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id, name, family, style, speed, checkpoint, vae, sampler, scheduler, steps, cfg, width, height
         case clipSkip, dialect, stylePrompt, negativePrompt, enhanceHint, loras, detectionNotes
-        case textEncoders, guidance, shift, picture
+        case textEncoders, guidance, shift, picture, template, usesTemplate
     }
 
     /// Fields added later fall back to their defaults, so older presets load.
@@ -219,6 +225,8 @@ public struct GenerationPreset: Codable, Hashable, Identifiable, Sendable {
         loras = try value(.loras, [])
         detectionNotes = try value(.detectionNotes, [])
         picture = try c.decodeIfPresent(UUID.self, forKey: .picture)
+        template = try c.decodeIfPresent(UUID.self, forKey: .template)
+        usesTemplate = try value(.usesTemplate, false)
     }
 }
 

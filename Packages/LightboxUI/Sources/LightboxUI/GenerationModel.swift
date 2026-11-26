@@ -156,7 +156,11 @@ public final class GenerationModel {
         guard let client = app.client else { return fail("Not connected to ComfyUI. Check the Settings.") }
         guard let preset = effectivePreset(app) else { return fail("Create a preset first.") }
         if let problem = preset.problem(with: app.catalog) { return fail(problem) }
-        if !guides.isEmpty, !preset.family.supportsGuides {
+        if preset.usesTemplate, template(of: preset, app) == nil {
+            return fail(
+                "The workflow “\(preset.name)” was made from is gone; switch its template off under Edit Presets.")
+        }
+        if !guides.isEmpty, !preset.family.supportsGuides || preset.usesTemplate {
             return fail("Guides don't work with \(preset.family.label) models yet; remove them to generate.")
         }
         let seed = Int(seedText.trimmingCharacters(in: .whitespaces)) ?? Int.random(in: 0...Int(UInt32.max))
@@ -176,8 +180,9 @@ public final class GenerationModel {
         // in the graph can only go through it.
         let added = workflow.flatMap { app.workflows.document($0.id) }.map { !$0.addedNodes.isEmpty } ?? false
         let events =
-            UserDefaults.standard.bool(forKey: Self.throughGraphKey) || added
-            ? graphEvents(prepared.request, workflow: workflow, client: client, app)
+            UserDefaults.standard.bool(forKey: Self.throughGraphKey) || added || preset.usesTemplate
+            ? graphEvents(
+                prepared.request, workflow: workflow, template: template(of: preset, app), client: client, app)
             : client.generate(prepared.request, catalog: app.catalog)
         run(events) { [weak self] images in
             gallery.add(
@@ -232,7 +237,8 @@ public final class GenerationModel {
         }
 
         var guideRequests: [GuideRequest] = []
-        for guide in guides {
+        // A template has no place for guides.
+        for guide in preset.usesTemplate ? [] : guides {
             switch setup(for: guide.kind, app) {
             case .success(let setup):
                 guideRequests.append(
@@ -254,7 +260,7 @@ public final class GenerationModel {
         let catalog = app.catalog
         let guideSize = preset.family == .sd15 ? 512 : 1024
         // The face/hand fix samples with a KSampler, which Flux 2's schedule doesn't fit.
-        let canFix = catalog.hasDetailer && preset.family != .flux2
+        let canFix = catalog.hasDetailer && preset.family != .flux2 && !preset.usesTemplate
         let faceDetector = canFix && finish.fixFaces ? catalog.faceDetector : nil
         let handDetector = canFix && finish.fixHands ? catalog.handDetector : nil
         var server = app.serverAddress
@@ -298,24 +304,26 @@ public final class GenerationModel {
         guard let preset = effectivePreset(app) else { return .failure(Problem(message: "Create a preset first.")) }
         let typed = Int(seedText.trimmingCharacters(in: .whitespaces))
         return prepare(preset, seed: typed ?? 0, app, showingRefused: true).flatMap { prepared in
-            let built = WorkflowBuilder.build(prepared.request, catalog: app.catalog)
             let workflow = shownWorkflow(app, preset: preset)
-            return Result { () throws(WorkflowDocumentError) in try WorkflowDocument(built, catalog: app.catalog) }
-                .map { standard in
-                    // A saved workflow keeps its layout and takes the form's values.
-                    let saved = workflow.flatMap { app.workflows.document($0.id) }
-                    let doc = saved?.reconciled(with: standard)
-                    var state = GraphState(
-                        doc: doc ?? standard, workflow: doc == nil ? nil : workflow, refusal: prepared.refusal,
-                        randomSeed: typed == nil)
-                    if let saved {
-                        let was = NodeEditing.modelKind(saved, catalog: app.catalog)
-                        let now = NodeEditing.modelKind(standard, catalog: app.catalog)
-                        if was != now { (state.madeFor, state.shownFor) = (was, now) }
-                    }
-                    return state
+            let template = template(of: preset, app)
+            return Result { () throws(WorkflowDocumentError) in
+                try GraphSend.standardGraph(prepared.request, template: template, catalog: app.catalog)
+            }
+            .map { standard in
+                // A saved workflow keeps its layout and takes the form's values.
+                let saved = workflow.flatMap { app.workflows.document($0.id) }
+                let doc = saved?.reconciled(with: standard)
+                var state = GraphState(
+                    doc: doc ?? standard, workflow: doc == nil ? nil : workflow, refusal: prepared.refusal,
+                    randomSeed: typed == nil)
+                if let saved {
+                    let was = NodeEditing.modelKind(saved, catalog: app.catalog)
+                    let now = NodeEditing.modelKind(standard, catalog: app.catalog)
+                    if was != now { (state.madeFor, state.shownFor) = (was, now) }
                 }
-                .mapError { Problem(message: $0.description) }
+                return state
+            }
+            .mapError { Problem(message: $0.description) }
         }
     }
 
@@ -466,8 +474,15 @@ public final class GenerationModel {
     /// Generating through the graph: the pictures uploaded, the graph built
     /// and brought into the shown workflow's layout, checked by
     /// `GraphSend`, then run.
+    /// The template the preset fills in, if it uses one.
+    func template(of preset: GenerationPreset, _ app: AppModel) -> WorkflowDocument? {
+        guard preset.usesTemplate else { return nil }
+        return preset.template.flatMap { app.workflows.document($0) }
+    }
+
     private func graphEvents(
-        _ request: GenerationRequest, workflow: WorkflowEntry?, client: ComfyClient, _ app: AppModel
+        _ request: GenerationRequest, workflow: WorkflowEntry?, template: WorkflowDocument?, client: ComfyClient,
+        _ app: AppModel
     ) -> AsyncThrowingStream<GenerationEvent, Error> {
         let catalog = app.catalog
         let rating = app.library.rating
@@ -477,8 +492,7 @@ public final class GenerationModel {
                 do {
                     if request.hasPictures { continuation.yield(.uploading) }
                     let uploaded = try await client.uploadPictures(request)
-                    let standard = try WorkflowDocument(
-                        WorkflowBuilder.build(uploaded, catalog: catalog), catalog: catalog)
+                    let standard = try GraphSend.standardGraph(uploaded, template: template, catalog: catalog)
                     let doc = saved?.reconciled(with: standard) ?? standard
                     let compiled = try GraphSend.prepare(doc, catalog: catalog, rating: rating).get()
                     if UserDefaults.standard.bool(forKey: Self.fullGraphKey) {

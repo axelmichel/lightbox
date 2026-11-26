@@ -59,10 +59,49 @@ enum GraphSend {
         return out
     }
 
+    /// The graph a request makes: the preset's template filled in, or the
+    /// one `WorkflowBuilder` builds.
+    static func standardGraph(_ request: GenerationRequest, template: WorkflowDocument?, catalog: ComfyCatalog)
+        throws(WorkflowDocumentError) -> WorkflowDocument
+    {
+        if let template { return template.filled(with: request, catalog: catalog) }
+        return try WorkflowDocument(WorkflowBuilder.build(request, catalog: catalog), catalog: catalog)
+    }
+
     /// The graph as run, for the gallery's `workflow-runs/`:
     /// `{"workflow": <UI format>, "prompt": <API format>}`.
     static func runFile(_ doc: WorkflowDocument, _ graph: WorkflowGraph) throws -> Data {
         let prompt = JSONValue.parse(try graph.jsonData()) ?? .object([:])
         return try JSONValue.object(["workflow": doc.json(), "prompt": prompt]).data()
+    }
+}
+
+/// Saying what a workflow lacks to be a template.
+enum TemplateText {
+    static func missing(_ kinds: [NodeRole.Kind]) -> String {
+        let names = kinds.map { kind -> String in
+            switch kind {
+            case .checkpoint, .diffusionModel: "model loader"
+            case .positive: "prompt (CLIP Text Encode)"
+            case .sampler: "sampler"
+            case .latent: "empty latent"
+            case .vaeDecode: "VAE Decode"
+            case .output: "output (Save or Preview Image)"
+            default: kind.rawValue
+            }
+        }
+        return "no " + names.joined(separator: ", no ")
+    }
+
+    /// What Lightbox fills in of a template.
+    static func found(_ kinds: Set<NodeRole.Kind>) -> String {
+        let parts: [(NodeRole.Kind, String)] = [
+            (.positive, "prompt"), (.negative, "negative"), (.sampler, "sampling"), (.latent, "size"),
+            (.lora, "LoRAs"), (.checkpoint, "model"), (.diffusionModel, "model"), (.textEncoders, "text encoders"),
+            (.vae, "VAE"), (.guidance, "guidance"), (.shift, "shift"), (.clipSkip, "CLIP skip"),
+        ]
+        var seen: Set<String> = []
+        return parts.filter { kinds.contains($0.0) }.map(\.1).filter { seen.insert($0).inserted }
+            .joined(separator: ", ")
     }
 }

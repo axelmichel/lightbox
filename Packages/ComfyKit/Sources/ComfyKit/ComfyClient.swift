@@ -136,6 +136,26 @@ public struct ComfyClient: Sendable {
         }
     }
 
+    /// The workflows saved in ComfyUI (its Workflows list): their file names.
+    public func savedWorkflows() async throws -> [String] {
+        var c = URLComponents(url: url("api/userdata"), resolvingAgainstBaseURL: false)!
+        c.queryItems = [URLQueryItem(name: "dir", value: "workflows")]
+        let data = try await send(URLRequest(url: c.url!))
+        let names = (try? JSONSerialization.jsonObject(with: data)) as? [String] ?? []
+        return names.filter { $0.lowercased().hasSuffix(".json") }
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    /// A workflow saved in ComfyUI, as the file it is.
+    public func savedWorkflow(_ name: String) async throws -> Data {
+        // "workflows/<name>" is one part of the path: its "/" is escaped too.
+        let part = "workflows/\(name)".addingPercentEncoding(
+            withAllowedCharacters: CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~")))!
+        let base = baseURL.absoluteString.hasSuffix("/") ? baseURL.absoluteString : baseURL.absoluteString + "/"
+        guard let url = URL(string: base + "api/userdata/" + part) else { throw ComfyError.unexpectedResponse(name) }
+        return try await send(URLRequest(url: url))
+    }
+
     public func image(_ ref: ImageRef) async throws -> Data {
         var c = URLComponents(url: url("view"), resolvingAgainstBaseURL: false)!
         c.queryItems = [

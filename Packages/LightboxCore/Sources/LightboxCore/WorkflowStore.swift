@@ -20,10 +20,13 @@ public struct WorkflowEntry: Codable, Hashable, Identifiable, Sendable {
     public var presetID: UUID?
     /// Preset values changed in the workflow's graph.
     public var overrides: PresetOverrides
+    /// A preset's template (made from a ComfyUI workflow), not one of the
+    /// workflows listed for it.
+    public var isTemplate: Bool
 
     public init(
         id: UUID = UUID(), name: String, created: Date = Date(), modified: Date = Date(), presetID: UUID? = nil,
-        overrides: PresetOverrides = PresetOverrides()
+        overrides: PresetOverrides = PresetOverrides(), isTemplate: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -31,10 +34,11 @@ public struct WorkflowEntry: Codable, Hashable, Identifiable, Sendable {
         self.modified = modified
         self.presetID = presetID
         self.overrides = overrides
+        self.isTemplate = isTemplate
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, created, modified, presetID, overrides
+        case id, name, created, modified, presetID, overrides, isTemplate
     }
 
     // Older entries have no overrides.
@@ -46,6 +50,7 @@ public struct WorkflowEntry: Codable, Hashable, Identifiable, Sendable {
         modified = try c.decode(Date.self, forKey: .modified)
         presetID = try c.decodeIfPresent(UUID.self, forKey: .presetID)
         overrides = try c.decodeIfPresent(PresetOverrides.self, forKey: .overrides) ?? PresetOverrides()
+        isTemplate = try c.decodeIfPresent(Bool.self, forKey: .isTemplate) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -57,6 +62,7 @@ public struct WorkflowEntry: Codable, Hashable, Identifiable, Sendable {
         try c.encodeIfPresent(presetID, forKey: .presetID)
         // Only when there are any, so the index stays small.
         if !overrides.isEmpty { try c.encode(overrides, forKey: .overrides) }
+        if isTemplate { try c.encode(true, forKey: .isTemplate) }
     }
 }
 
@@ -119,7 +125,10 @@ public struct WorkflowStore: Sendable {
     /// The preset is deleted: delete its workflows too, or keep them
     /// without a preset.
     public func presetDeleted(_ presetID: UUID, keepWorkflows: Bool) throws {
-        let ids = try index().workflows.filter { $0.presetID == presetID }.map(\.id)
+        let all = try index().workflows.filter { $0.presetID == presetID }
+        // Its template goes with it either way.
+        for template in all where template.isTemplate { try delete(template.id) }
+        let ids = all.filter { !$0.isTemplate }.map(\.id)
         guard !ids.isEmpty else { return }
         if keepWorkflows {
             try update { index in

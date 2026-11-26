@@ -141,6 +141,25 @@ async def ok(_):
     return web.Response()
 
 
+# The frontend's saved workflows: one made-up workflow from the tests' fixtures.
+SAVED = {"made_up_krea2.json": __import__("pathlib").Path(__file__).resolve().parent.parent.parent
+         / "Packages/LightboxCore/Tests/LightboxCoreTests/Fixtures/workflow_krea2_ui.json"}
+
+
+async def userdata(request):
+    if request.query.get("dir") != "workflows":
+        return web.json_response([])
+    return web.json_response(sorted(SAVED))
+
+
+async def userdata_file(request):
+    name = request.match_info["file"]
+    path = SAVED.get(name.removeprefix("workflows/"))
+    if path is None:
+        return web.Response(status=404)
+    return web.Response(body=path.read_bytes(), content_type="application/json")
+
+
 app = web.Application()
 app.add_routes([
     web.get("/system_stats", system_stats),
@@ -153,5 +172,7 @@ app.add_routes([
     web.post("/interrupt", ok),
     web.post("/queue", ok),
     web.get("/fake_log", get_log),
+    web.get("/api/userdata", userdata),
+    web.get("/api/userdata/{file}", userdata_file),
 ])
 web.run_app(app, host="127.0.0.1", port=PORT, print=None)

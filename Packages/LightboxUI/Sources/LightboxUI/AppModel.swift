@@ -268,6 +268,55 @@ public final class AppModel {
         library.loraNotes[name]?.picture = nil
     }
 
+    // MARK: - Presets from workflows
+
+    /// A preset from a ComfyUI workflow (a file, or one saved on the
+    /// server). The workflow is kept as its template; the preset fills it in
+    /// to generate when Lightbox has no tuned support for its model.
+    @discardableResult
+    public func addPreset(fromWorkflow data: Data, name: String) throws -> GenerationPreset {
+        let doc = (try? WorkflowDocument(data: data)) ?? (try? WorkflowDocument(api: data, catalog: catalog))
+        let marking = doc?.markedAsTemplate(catalog: catalog)
+        var preset: GenerationPreset
+        var prompt = ""
+        do {
+            let result = try WorkflowImport.read(data, name: name)
+            preset = result.preset
+            prompt = result.prompt
+            let onServer = Set(models + catalog.textEncoders + catalog.loras)
+            let missing = result.files.filter { !onServer.contains($0) }
+            if isConnected, !missing.isEmpty {
+                preset.detectionNotes.append("Not on the server: \(missing.joined(separator: ", ")).")
+            }
+        } catch {
+            // Read as a preset it isn't (a sampler or loader Lightbox doesn't
+            // know); as a template it may well be.
+            guard let marking, marking.missing.isEmpty else { throw error }
+            let s = ManagedGraph(marking.doc, catalog: catalog).settings
+            let stem = (name as NSString).deletingPathExtension
+            preset = GenerationPreset(
+                name: stem.isEmpty ? "Workflow" : stem, family: .unsupported,
+                checkpoint: s.checkpoint ?? s.diffusionModel ?? "", sampler: s.sampler,
+                scheduler: s.scheduler ?? "normal", steps: s.steps, cfg: s.cfg, width: s.width ?? 1024,
+                height: s.height ?? 1024, negativePrompt: s.negative ?? "")
+            preset.detectionNotes = ["Read from the workflow; Lightbox has no tuned support for this model."]
+            prompt = s.positive
+        }
+        if let marking, marking.missing.isEmpty,
+            let id = workflows.saveTemplate(marking.doc, name: preset.name, presetID: preset.id)
+        {
+            preset.template = id
+            preset.usesTemplate = !preset.family.isSupported
+        } else if let marking {
+            preset.detectionNotes.append("Can't be used as a template: \(TemplateText.missing(marking.missing)).")
+        }
+        library.presets.append(preset)
+        library.knownCheckpoints.insert(preset.checkpoint)
+        generation.presetID = preset.id
+        if !prompt.isEmpty { generation.prompt = prompt }
+        return preset
+    }
+
     // MARK: - Preset pictures
 
     public func presetPicture(_ id: UUID) -> CGImage? {
