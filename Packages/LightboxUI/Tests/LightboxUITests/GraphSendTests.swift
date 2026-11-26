@@ -212,3 +212,32 @@ func anAddedUpscalerRunsOnTheServer() async throws {
     let output = try #require(sent.values.first { $0["class_type"]?.string == "PreviewImage" })
     #expect(output["inputs"]?["images"]?.array?.first?.string == String(scale))
 }
+
+/// A template made from a workflow fixture, filled with `positive`.
+private func filledTemplate(_ name: String, _ positive: String, negative: String, _ c: ComfyCatalog) throws
+    -> WorkflowDocument
+{
+    let url = URL(filePath: #filePath).deletingLastPathComponent()
+        .appending(path: "../../../LightboxCore/Tests/LightboxCoreTests/Fixtures/\(name).json").standardized
+    let template = try WorkflowDocument(data: Data(contentsOf: url)).markedAsTemplate(catalog: c).doc
+    var r = request(positive, negative: negative)
+    r.loras = []
+    return template.filled(with: r, catalog: c)
+}
+
+@Test func templatesGoThroughTheGuardToo() throws {
+    let c = try catalog()
+    let blocked = try filledTemplate("workflow_krea2_ui", "loli", negative: "", c)
+    guard case .failure = GraphSend.prepare(blocked, catalog: c, rating: .mature) else {
+        Issue.record("should be blocked")
+        return
+    }
+    // A child in the prompt: the safety terms go into the negative, even where the template zeroed it out
+    // (compose puts them into the request's negative first).
+    let child = try filledTemplate(
+        "workflow_krea2_ui", "a child playing in the garden",
+        negative: ContentGuard.minorNegatives.joined(separator: ", "), c)
+    let compiled = try GraphSend.prepare(child, catalog: c, rating: .mature).get()
+    let sent = try #require(negative(compiled))
+    for term in ContentGuard.minorNegatives { #expect(sent.contains(term), "\(term)") }
+}
