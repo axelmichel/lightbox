@@ -142,3 +142,22 @@ private func builtDoc() throws -> WorkflowDocument {
     #expect(hooked.map(\.node) == [id])
     #expect(hooked.first?.change == .addLora(name: "new-look.safetensors", strength: 0.7, clipStrength: 0.4))
 }
+
+@Test func graphsSayWhatModelTheyAreFor() throws {
+    func kind(_ split: SplitModelRequest?) throws -> String? {
+        var r = GenerationRequest(checkpoint: "photo-xl.safetensors", positive: "a fox", negative: "", seed: 1)
+        r.split = split
+        let doc = try WorkflowDocument(WorkflowBuilder.build(r, catalog: ComfyCatalog()), catalog: ComfyCatalog())
+        return NodeEditing.modelKind(doc, catalog: ComfyCatalog())
+    }
+    #expect(try kind(nil) == "a checkpoint model")
+    #expect(
+        try kind(
+            SplitModelRequest(model: "f.gguf", textEncoders: ["t5.gguf", "l.safetensors"], clipType: "flux", vae: "ae"))
+            == "Flux")
+    #expect(
+        try kind(
+            SplitModelRequest(model: "k.safetensors", textEncoders: ["q.safetensors"], clipType: "krea2", vae: "v"))
+            == "Krea 2")
+    #expect(NodeEditing.modelKind(WorkflowDocument(), catalog: ComfyCatalog()) == nil)
+}

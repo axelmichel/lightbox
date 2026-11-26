@@ -282,6 +282,11 @@ public final class GenerationModel {
         var doc: WorkflowDocument
         /// The saved workflow shown, brought up to date with the form.
         var workflow: WorkflowEntry?
+        /// The kind of model the saved workflow was made for, when the
+        /// preset now uses another ("a checkpoint model", "Flux", …).
+        var madeFor: String?
+        /// The kind it is shown rebuilt for.
+        var shownFor: String?
         /// Why the guard refused the prompt; the prompt nodes are empty then.
         var refusal: String?
         /// No seed typed: each run picks one, the graph shows 0.
@@ -298,10 +303,17 @@ public final class GenerationModel {
             return Result { () throws(WorkflowDocumentError) in try WorkflowDocument(built, catalog: app.catalog) }
                 .map { standard in
                     // A saved workflow keeps its layout and takes the form's values.
-                    let doc = workflow.flatMap { app.workflows.document($0.id) }?.reconciled(with: standard)
-                    return GraphState(
+                    let saved = workflow.flatMap { app.workflows.document($0.id) }
+                    let doc = saved?.reconciled(with: standard)
+                    var state = GraphState(
                         doc: doc ?? standard, workflow: doc == nil ? nil : workflow, refusal: prepared.refusal,
                         randomSeed: typed == nil)
+                    if let saved {
+                        let was = NodeEditing.modelKind(saved, catalog: app.catalog)
+                        let now = NodeEditing.modelKind(standard, catalog: app.catalog)
+                        if was != now { (state.madeFor, state.shownFor) = (was, now) }
+                    }
+                    return state
                 }
                 .mapError { Problem(message: $0.description) }
         }

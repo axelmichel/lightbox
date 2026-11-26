@@ -140,3 +140,23 @@ enum NodeSearch {
         }
     }
 }
+
+extension NodeEditing {
+    /// What kind of model a graph is built for, said for people: "a
+    /// checkpoint model", "Flux", "Z-Image", … `nil` for a graph without
+    /// Lightbox's loaders.
+    static func modelKind(_ doc: WorkflowDocument, catalog: ComfyCatalog) -> String? {
+        let roles = Set(doc.roles.values)
+        if roles.contains(NodeRole(.checkpoint)) { return "a checkpoint model" }
+        guard roles.contains(NodeRole(.diffusionModel)) else { return nil }
+        switch ManagedGraph(doc, catalog: catalog).settings.clipType {
+        case "flux": return "Flux"
+        case "flux2": return "Flux 2"
+        case "lumina2": return "Z-Image"
+        case "stable_diffusion": return "Anima"
+        case "krea2": return "Krea 2"
+        case let other?: return other
+        case nil: return "a diffusion model"
+        }
+    }
+}

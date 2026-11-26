@@ -54,7 +54,14 @@ struct NodeGraphView: View {
                     description: Text(problem.message))
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) { header(state) }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                header(state)
+                if let state, let was = state.madeFor, let workflow = state.workflow {
+                    rebuiltNotice(workflow, was: was, now: state.shownFor ?? "this preset", state: state)
+                }
+            }
+        }
         .alert(
             namingTitle, isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } }),
             presenting: naming
@@ -157,6 +164,43 @@ struct NodeGraphView: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .help("The workflow shown: the preset's standard graph, or one saved with its layout")
+    }
+
+    /// The workflow was saved for another kind of model than its preset now
+    /// uses: it is shown rebuilt, and stays as saved until rebuilt here.
+    private func rebuiltNotice(_ workflow: WorkflowEntry, was: String, now: String, state: GenerationModel.GraphState)
+        -> some View
+    {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(.orange)
+            Text("“\(workflow.name)” was made for \(was); shown rebuilt for \(now). Your nodes are kept.")
+                .font(.callout).lineLimit(2)
+            Spacer()
+            Button("Rebuild, Keep a Copy") { rebuild(workflow, was: was, state: state) }
+                .controlSize(.small)
+                .help("Save the old version as a copy, then keep the rebuilt graph in “\(workflow.name)”")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(.orange.opacity(0.12))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    /// Keep the old version as a copy, then the rebuilt graph in the
+    /// workflow; its model overrides belonged to the old kind and go.
+    private func rebuild(_ workflow: WorkflowEntry, was: String, state: GenerationModel.GraphState) {
+        let workflows = app.workflows
+        guard let old = workflows.document(workflow.id), let preset = app.generation.preset(in: app.library) else {
+            return
+        }
+        let kind = was.hasPrefix("a ") ? String(was.dropFirst(2)) : was
+        _ = workflows.save(old, name: workflows.uniqueName("\(workflow.name) (\(kind))"), presetID: preset.id)
+        workflows.change(workflow.id, to: state.doc, "Rebuild Workflow", undo: undo)
+        var overrides = workflow.overrides
+        overrides.checkpoint = nil
+        overrides.vae = nil
+        overrides.textEncoders = nil
+        workflows.setOverrides(workflow.id, overrides)
     }
 
     /// Nodes were moved: keep the layout in the workflow shown. The standard
